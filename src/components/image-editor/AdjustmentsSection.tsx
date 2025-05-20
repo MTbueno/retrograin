@@ -4,29 +4,13 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+// Input might be removed if hex input is no longer there
+// Popover, PopoverContent, PopoverTrigger, Button will be removed if only used for custom color picker
 import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
-const PRESET_TINT_COLORS = [
-  '#FFB347', // Orange (Accent)
-  '#FFD700', // Gold
-  '#FFA07A', // LightSalmon
-  '#E0FFFF', // LightCyan (Cool)
-  '#ADD8E6', // LightBlue (Cool)
-  '#FFC0CB', // Pink
-  '#D8BFD8', // Thistle (Muted Purple)
-  '#A9A9A9', // DarkGray
-  '#778899', // LightSlateGray
-  '#FFFFFF', // White
-  '#000000', // Black
-  '#800000', // Maroon
-  '#008000', // Green
-  '#000080', // Navy
-  '#4B0082', // Indigo
-];
+// PRESET_TINT_COLORS is no longer needed
+// const PRESET_TINT_COLORS = [ ... ];
 
 
 export function AdjustmentsSection() {
@@ -80,11 +64,10 @@ export function AdjustmentsSection() {
     tonalRange: 'shadows' | 'midtones' | 'highlights',
     color: string
   ) => {
-    // Basic hex color validation
-    const isValidHex = /^#[0-9A-F]{6}$/i.test(color) || /^#[0-9A-F]{3}$/i.test(color);
-    if (!isValidHex && color !== '') { // Allow empty string to clear
-        // Potentially show a toast message for invalid hex
-        console.warn("Invalid hex color:", color);
+    // Basic hex color validation from native color picker is usually #rrggbb
+    const isValidHex = /^#[0-9A-F]{6}$/i.test(color);
+    if (!isValidHex && color !== '') { 
+        console.warn("Invalid hex color:", color); // Should not happen with native picker
         return;
     }
 
@@ -95,7 +78,7 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    setIsPreviewing(false); // Ensure full render after color pick
+    setIsPreviewing(false); 
   };
   
 
@@ -149,7 +132,7 @@ export function AdjustmentsSection() {
     </div>
   );
 
-  const renderTintControlPopover = (
+  const renderTintControlGroup = (
     tonalRange: 'shadows' | 'midtones' | 'highlights',
     label: string,
     colorValue: string,
@@ -165,61 +148,18 @@ export function AdjustmentsSection() {
       }, true)}
 
       {intensityValue > 0 && (
-        <div className="flex items-center space-x-2">
-          <Label htmlFor={`tint${tonalRange}ColorTrigger`} className="text-xs text-muted-foreground shrink-0">
+        <div className="flex items-center space-x-2 pl-6"> {/* Adjust pl-6 as needed for alignment */}
+          <Label htmlFor={`tint${tonalRange}ColorInput`} className="text-xs text-muted-foreground shrink-0">
             Color:
           </Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                id={`tint${tonalRange}ColorTrigger`}
-                variant="outline"
-                size="icon"
-                className="h-6 w-6 p-0 border-input rounded-sm shrink-0"
-                style={{ backgroundColor: colorValue || 'transparent' }}
-                aria-label={`Select ${label} tint color`}
-                disabled={!originalImage}
-              />
-            </PopoverTrigger>
-            <PopoverContent 
-              className="p-2 w-56 bg-popover/90 backdrop-blur-sm border-popover-foreground/30 shadow-xl rounded-md"
-              side="bottom"
-              align="center" 
-            >
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor={`tint${tonalRange}HexInput`} className="text-xs text-popover-foreground font-medium">
-                    Hex Color
-                  </Label>
-                  <Input
-                    id={`tint${tonalRange}HexInput`}
-                    className="h-8 mt-1 bg-background/70 text-foreground placeholder:text-muted-foreground focus:ring-ring"
-                    value={colorValue}
-                    onChange={(e) => handleTintColorChange(tonalRange, e.target.value)}
-                    placeholder="#RRGGBB"
-                    disabled={!originalImage}
-                  />
-                </div>
-                <div>
-                    <Label className="text-xs text-popover-foreground font-medium mb-1 block">
-                        Preset Colors
-                    </Label>
-                    <div className="grid grid-cols-5 gap-1.5">
-                    {PRESET_TINT_COLORS.map((preset) => (
-                        <Button
-                        key={preset}
-                        className="h-7 w-7 p-0 rounded-sm border border-border hover:opacity-80"
-                        style={{ backgroundColor: preset }}
-                        onClick={() => handleTintColorChange(tonalRange, preset)}
-                        aria-label={`Select color ${preset}`}
-                        disabled={!originalImage}
-                        />
-                    ))}
-                    </div>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <input
+            type="color"
+            id={`tint${tonalRange}ColorInput`}
+            value={colorValue || '#000000'} // Native picker needs a valid hex; default to black if empty
+            onChange={(e) => handleTintColorChange(tonalRange, e.target.value)}
+            disabled={!originalImage}
+            className="h-7 w-10 p-0.5 border border-input rounded-sm cursor-pointer bg-card" // Basic styling for the color swatch
+          />
         </div>
       )}
     </div>
@@ -237,9 +177,9 @@ export function AdjustmentsSection() {
       
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Tint</Label>
-      {renderTintControlPopover('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity)}
-      {renderTintControlPopover('midtones', 'Midtones', settings.tintMidtonesColor, settings.tintMidtonesIntensity)}
-      {renderTintControlPopover('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity)}
+      {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity)}
+      {renderTintControlGroup('midtones', 'Midtones', settings.tintMidtonesColor, settings.tintMidtonesIntensity)}
+      {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity)}
 
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Effects</Label>
