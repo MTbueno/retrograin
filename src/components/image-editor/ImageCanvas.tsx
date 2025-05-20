@@ -2,12 +2,12 @@
 "use client";
 
 import type { RefObject } from 'react';
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
 
-// Helper function to apply filters on canvas
-const applyCanvasAdjustments = (
+// Helper function to apply CSS-like filters on canvas
+const applyCssFilters = (
   ctx: CanvasRenderingContext2D,
   settings: ImageSettings
 ) => {
@@ -17,12 +17,8 @@ const applyCanvasAdjustments = (
   if (settings.saturation !== 1) filterString += `saturate(${settings.saturation * 100}%) `;
   
   if (settings.exposure !== 0) {
-    // Exposure is a bit tricky with CSS filters. A common way is to use brightness.
-    // We scale the exposure value (-0.5 to 0.5) to a brightness multiplier.
-    // For example, exposure 0 -> brightness 1. exposure 0.5 -> brightness 1.25. exposure -0.5 -> brightness 0.75
-    // This is an approximation.
     const exposureEffect = 1 + settings.exposure * 0.5; 
-    filterString += `brightness(${exposureEffect * 100}%) `;
+    filterString += `brightness(${exposureEffect * 100}%) `; // Approximating exposure with brightness
   }
 
   if (settings.hueRotate !== 0) filterString += `hue-rotate(${settings.hueRotate}deg) `;
@@ -38,7 +34,6 @@ const applyCanvasAdjustments = (
 // Debounce helper function
 function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
-
   return (...args: Parameters<F>): void => {
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
@@ -49,10 +44,46 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
   };
 }
 
-const PREVIEW_SCALE_FACTOR = 0.5; // Lower for more performance, higher for better preview quality
+const PREVIEW_SCALE_FACTOR = 0.5; 
+const NOISE_CANVAS_SIZE = 100; // Size of the noise texture
 
 export function ImageCanvas() { 
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
+  const noiseCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const noisePatternRef = useRef<CanvasPattern | null>(null);
+
+  // Generate noise pattern
+  useEffect(() => {
+    if (typeof window !== 'undefined') { // Ensure this runs only on client
+        const noiseCv = document.createElement('canvas');
+        noiseCv.width = NOISE_CANVAS_SIZE;
+        noiseCv.height = NOISE_CANVAS_SIZE;
+        const noiseCtx = noiseCv.getContext('2d');
+        if (noiseCtx) {
+            const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const rand = Math.floor(Math.random() * 150) + 50; // Grayscale noise, not too dark or light
+                data[i] = rand;     // red
+                data[i + 1] = rand; // green
+                data[i + 2] = rand; // blue
+                data[i + 3] = 255;  // alpha
+            }
+            noiseCtx.putImageData(imageData, 0, 0);
+            noiseCanvasRef.current = noiseCv;
+
+            // Create pattern immediately if main canvas context is available,
+            // otherwise it will be created in drawImageImmediately
+             const mainCanvas = canvasRef.current;
+             if (mainCanvas) {
+                const mainCtx = mainCanvas.getContext('2d');
+                if (mainCtx) {
+                    noisePatternRef.current = mainCtx.createPattern(noiseCv, 'repeat');
+                }
+             }
+        }
+    }
+  }, [canvasRef]); // Re-run if canvasRef changes, though it shouldn't often
 
   const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
@@ -60,6 +91,11 @@ export function ImageCanvas() {
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Ensure noise pattern is created if it wasn't (e.g. if canvasRef wasn't ready during useEffect)
+    if (noiseCanvasRef.current && !noisePatternRef.current) {
+        noisePatternRef.current = ctx.createPattern(noiseCanvasRef.current, 'repeat');
+    }
 
     const { rotation, scaleX, scaleY, crop } = settings;
 
@@ -72,15 +108,13 @@ export function ImageCanvas() {
       sy = crop.unit === '%' ? (crop.y / 100) * originalImage.naturalHeight : crop.y;
       sWidth = crop.unit === '%' ? (crop.width / 100) * originalImage.naturalWidth : crop.width;
       sHeight = crop.unit === '%' ? (crop.height / 100) * originalImage.naturalHeight : crop.height;
-      sWidth = Math.max(1, sWidth); // Ensure positive dimensions
+      sWidth = Math.max(1, sWidth);
       sHeight = Math.max(1, sHeight);
     }
     
-    // contentWidth/Height are the dimensions of the (cropped) image part at full scale
     let contentWidth = sWidth;
     let contentHeight = sHeight;
     
-    // Determine canvas buffer size based on content and transformations (flips)
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
       canvasBufferWidth = contentHeight * Math.abs(scaleY);
@@ -90,59 +124,97 @@ export function ImageCanvas() {
       canvasBufferHeight = contentHeight * Math.abs(scaleY);
     }
 
-    // Apply preview scaling to the canvas buffer itself
-    if (isPreviewing) {
-      canvas.width = canvasBufferWidth * PREVIEW_SCALE_FACTOR;
-      canvas.height = canvasBufferHeight * PREVIEW_SCALE_FACTOR;
-    } else {
-      canvas.width = canvasBufferWidth;
-      canvas.height = canvasBufferHeight;
-    }
+    const currentScaleFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1;
+    canvas.width = canvasBufferWidth * currentScaleFactor;
+    canvas.height = canvasBufferHeight * currentScaleFactor;
     
     ctx.save();
     
-    // Translate to center of the current canvas buffer
     ctx.translate(canvas.width / 2, canvas.height / 2);
-    
     ctx.rotate((rotation * Math.PI) / 180);
-    ctx.scale(scaleX, scaleY); // For flip
-
-    // If previewing, apply scaling to the drawing context.
-    // This ensures filters are applied "as if" on full res, then scaled.
+    ctx.scale(scaleX, scaleY);
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
 
-    applyCanvasAdjustments(ctx, settings);
+    // 1. Apply CSS-like filters
+    applyCssFilters(ctx, settings);
     
-    // Draw the image content (e.g. cropped part) centered.
-    // The coordinates/dimensions for drawImage are based on the full-scale content.
-    // The context's transformations (including preview scale) handle the rest.
+    // 2. Draw the image (filters are applied here)
     ctx.drawImage(
-      originalImage,
-      sx,
-      sy,
-      sWidth, // source width from original image
-      sHeight, // source height from original image
-      -contentWidth / 2, // destination x, centered
-      -contentHeight / 2, // destination y, centered
-      contentWidth, // destination width (full scale)
-      contentHeight // destination height (full scale)
+      originalImage, sx, sy, sWidth, sHeight,
+      -contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight
     );
 
-    ctx.restore();
+    // 3. Reset CSS filters for manual drawing effects
+    ctx.filter = 'none';
+
+    // 4. Apply Color Temperature
+    if (settings.colorTemperature !== 0) {
+      const temp = settings.colorTemperature / 100; // Normalize to -1 to 1
+      const alpha = Math.abs(temp) * 0.2; // Max 20% opacity for overlay
+      if (temp > 0) { // Warm
+        ctx.fillStyle = `rgba(255, 165, 0, ${alpha})`; // Orange
+      } else { // Cool
+        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`; // Blue
+      }
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+      ctx.globalCompositeOperation = 'source-over'; // Reset
+    }
+    
+    // 5. Apply Vignette
+    if (settings.vignetteIntensity > 0) {
+      const centerX = 0; // Relative to translated center
+      const centerY = 0;
+      const radiusX = contentWidth / 2;
+      const radiusY = contentHeight / 2;
+      // Make vignette elliptical based on content aspect ratio
+      const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
+
+
+      const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
+      gradient.addColorStop(0, `rgba(0,0,0,0)`);
+      gradient.addColorStop(1, `rgba(0,0,0,${settings.vignetteIntensity})`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+    }
+
+    // 6. Apply Grain
+    if (settings.grainIntensity > 0 && noisePatternRef.current) {
+        ctx.save(); // Save context state before applying grain
+        ctx.fillStyle = noisePatternRef.current;
+        ctx.globalAlpha = settings.grainIntensity * 0.5; // Grain is usually subtle
+        ctx.globalCompositeOperation = 'overlay';
+        // Ensure grain covers the entire transformed image area
+        // We need to fill a rectangle in the original (unrotated, unscaled by this transform) coordinate system
+        // that corresponds to the current view.
+        // Since transforms are already applied, filling from -contentWidth/2, -contentHeight/2 works.
+        ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+        ctx.restore(); // Restore alpha and composite operation
+    }
+
+    ctx.restore(); // Restore all transformations and settings
   }, [originalImage, settings, canvasRef, isPreviewing]);
 
   const debouncedDrawImage = useMemo(
-    () => debounce(drawImageImmediately, isPreviewing ? 30 : 200), // Shorter debounce for preview
+    () => debounce(drawImageImmediately, isPreviewing ? 30 : 200),
     [drawImageImmediately, isPreviewing]
   );
 
   useEffect(() => {
     if (originalImage) {
       debouncedDrawImage();
+    } else { // Clear canvas if no image
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
     }
-  }, [originalImage, settings, debouncedDrawImage, isPreviewing]); // isPreviewing dependency ensures redraw on mode change
+  }, [originalImage, settings, debouncedDrawImage, isPreviewing]);
 
 
   if (!originalImage) {

@@ -9,7 +9,10 @@ export interface ImageSettings {
   contrast: number;
   saturation: number;
   exposure: number;
-  hueRotate: number; // Added for Hue Rotation
+  hueRotate: number;
+  vignetteIntensity: number; // 0 to 1
+  grainIntensity: number;    // 0 to 1
+  colorTemperature: number;  // -100 (cool) to 100 (warm)
   rotation: number;
   scaleX: number;
   scaleY: number;
@@ -18,16 +21,19 @@ export interface ImageSettings {
 }
 
 export const initialImageSettings: ImageSettings = {
-  brightness: 1, // Multiplier, 1 = 100%
-  contrast: 1,   // Multiplier, 1 = 100%
-  saturation: 1, // Multiplier, 1 = 100%
-  exposure: 0,   // Additive/multiplicative, 0 = no change
-  hueRotate: 0,  // Degrees, 0 = no change
-  rotation: 0,   // Degrees
-  scaleX: 1,     // 1 or -1
-  scaleY: 1,     // 1 or -1
+  brightness: 1,
+  contrast: 1,
+  saturation: 1,
+  exposure: 0,
+  hueRotate: 0,
+  vignetteIntensity: 0,
+  grainIntensity: 0,
+  colorTemperature: 0,
+  rotation: 0,
+  scaleX: 1,
+  scaleY: 1,
   crop: null,
-  filter: null,  // e.g., 'grayscale', 'sepia', 'invert'
+  filter: null,
 };
 
 export type SettingsAction =
@@ -35,7 +41,10 @@ export type SettingsAction =
   | { type: 'SET_CONTRAST'; payload: number }
   | { type: 'SET_SATURATION'; payload: number }
   | { type: 'SET_EXPOSURE'; payload: number }
-  | { type: 'SET_HUE_ROTATE'; payload: number } // Added for Hue Rotation
+  | { type: 'SET_HUE_ROTATE'; payload: number }
+  | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
+  | { type: 'SET_GRAIN_INTENSITY'; payload: number }
+  | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
   | { type: 'ROTATE_CW' }
   | { type: 'ROTATE_CCW' }
   | { type: 'FLIP_HORIZONTAL' }
@@ -54,8 +63,14 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, saturation: action.payload };
     case 'SET_EXPOSURE':
         return { ...state, exposure: action.payload };
-    case 'SET_HUE_ROTATE': // Added for Hue Rotation
+    case 'SET_HUE_ROTATE':
       return { ...state, hueRotate: action.payload };
+    case 'SET_VIGNETTE_INTENSITY':
+      return { ...state, vignetteIntensity: action.payload };
+    case 'SET_GRAIN_INTENSITY':
+      return { ...state, grainIntensity: action.payload };
+    case 'SET_COLOR_TEMPERATURE':
+      return { ...state, colorTemperature: action.payload };
     case 'ROTATE_CW':
       return { ...state, rotation: (state.rotation + 90) % 360 };
     case 'ROTATE_CCW':
@@ -68,8 +83,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, crop: action.payload };
     case 'APPLY_FILTER':
       if (action.payload === 'grayscale') {
-        // When applying grayscale, ensure saturation is also set to 0 for consistency
-        // and hueRotate to 0 as it would have no effect.
         return { ...state, filter: action.payload, saturation: 0, hueRotate: 0 };
       }
       return { ...state, filter: action.payload };
@@ -105,9 +118,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality?: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
-
-    // Ensure we are not in preview mode for final quality Data URL generation.
-    // This is a safeguard; ideally, setIsPreviewing(false) is called before this.
     if (isPreviewing) {
       console.warn("getCanvasDataURL called while isPreviewing is true. Consider calling setIsPreviewing(false) before this for intended quality.");
     }
