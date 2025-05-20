@@ -120,13 +120,12 @@ export function AdjustmentsSection() {
           if (originalImage) setIsPreviewing(true); // Start preview on value change (drag)
         }}
         disabled={!originalImage}
-        onPointerDown={() => { // Kept for completeness, though onValueChange also sets preview
+        onPointerDown={() => {
           if (originalImage) setIsPreviewing(true);
         }}
-        onValueChangeCommit={() => { // Use onValueChangeCommit for final value
+        onValueCommit={() => { // Corrected prop name
              if (originalImage) setIsPreviewing(false);
         }}
-        // onPointerUp is replaced by onValueChangeCommit for sliders
       />
     </div>
   );
