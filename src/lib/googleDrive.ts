@@ -28,8 +28,9 @@ export function loadGapi(callback: () => void) {
     gapiLoaded = true;
     gapi.load('client', async () => {
       if (!API_KEY) {
-        console.error("Google API Key (NEXT_PUBLIC_GOOGLE_API_KEY) is missing from your .env file.");
-        alert("Configuração Faltando: A Chave de API do Google (NEXT_PUBLIC_GOOGLE_API_KEY) não foi encontrada no seu arquivo .env. As funcionalidades do Google Drive não funcionarão.");
+        console.error("CRITICAL SETUP ISSUE: Google API Key (NEXT_PUBLIC_GOOGLE_API_KEY) is missing from your .env file or not accessible by the application. Google Drive features will NOT work.");
+        console.warn("CONFIGURAÇÃO CRÍTICA: A Chave de API do Google (NEXT_PUBLIC_GOOGLE_API_KEY) não foi encontrada no seu arquivo .env ou não está acessível pela aplicação. As funcionalidades do Google Drive NÃO funcionarão. Verifique seu arquivo .env e reinicie o servidor/build.");
+        // The function will still return, preventing further gapi.client.init if the key is missing.
         return;
       }
       try {
@@ -44,9 +45,10 @@ export function loadGapi(callback: () => void) {
         let userErrorMessage = "Falha Crítica ao Inicializar a API do Google Drive.\n\n";
         userErrorMessage += "A causa MAIS PROVÁVEL é um problema com a sua Chave de API do Google (`NEXT_PUBLIC_GOOGLE_API_KEY`) ou suas configurações no Google Cloud Console.\n\n";
         userErrorMessage += "VERIFIQUE ATENTAMENTE:\n";
-        userErrorMessage += "1. CHAVE DE API NO ARQUIVO .env:\n";
-        userErrorMessage += "   - A `NEXT_PUBLIC_GOOGLE_API_KEY` no seu arquivo .env está EXATAMENTE CORRETA? Copie e cole novamente do Google Cloud Console para ter certeza.\n";
-        userErrorMessage += "   - Você REINICIOU o servidor de desenvolvimento (npm run dev) após salvar o arquivo .env?\n\n";
+        userErrorMessage += "1. CHAVE DE API NO ARQUIVO .env (E NO AMBIENTE DE BUILD/HOSPEDAGEM):\n";
+        userErrorMessage += "   - A `NEXT_PUBLIC_GOOGLE_API_KEY` está EXATAMENTE CORRETA? Copie e cole novamente do Google Cloud Console para ter certeza.\n";
+        userErrorMessage += "   - Você REINICIOU o servidor de desenvolvimento (npm run dev) após salvar o arquivo .env local?\n";
+        userErrorMessage += "   - Se estiver fazendo deploy (ex: Vercel), a variável de ambiente `NEXT_PUBLIC_GOOGLE_API_KEY` foi configurada CORRETAMENTE nas configurações do projeto na plataforma de hospedagem?\n\n";
         userErrorMessage += "2. GOOGLE CLOUD CONSOLE (para o projeto da Chave de API):\n";
         userErrorMessage += "   a. A 'Google Drive API' está ATIVADA?\n";
         userErrorMessage += "      (Vá em 'APIs e Serviços' > 'APIs e serviços ativados')\n\n";
@@ -60,7 +62,7 @@ export function loadGapi(callback: () => void) {
         userErrorMessage += "   c. **SUGESTÃO DE DIAGNÓSTICO:** Para isolar o problema, **REMOVA TEMPORARIAMENTE TODAS as restrições** da Chave de API no Google Cloud Console (referenciadores e de API). Se o aplicativo funcionar, o problema está nas configurações de restrição. Depois, adicione-as de volta cuidadosamente.\n\n";
         userErrorMessage += "Detalhes do erro técnico: " + ((error as Error).message || "Erro desconhecido") + "\n";
         userErrorMessage += "Consulte o console do navegador para mais detalhes técnicos (pode haver erros de CORS, 401 ou 403 relacionados à Chave de API).";
-        alert(userErrorMessage);
+        alert(userErrorMessage); // Mantemos o alert aqui para erros de inicialização do gapi.client
         // driveApiLoaded will remain false, which should prevent further Drive operations.
       }
     });
@@ -71,8 +73,8 @@ export function loadGapi(callback: () => void) {
 
 export function initTokenClient(callback: (tokenResponse: google.accounts.oauth2.TokenResponse) => void): google.accounts.oauth2.TokenClient | null {
     if (!CLIENT_ID) {
-        console.error("Google Client ID (NEXT_PUBLIC_GOOGLE_CLIENT_ID) is missing from your .env file.");
-        alert("Configuração Faltando: O ID do Cliente Google (NEXT_PUBLIC_GOOGLE_CLIENT_ID) não foi encontrado no seu arquivo .env. A autenticação com o Google Drive não funcionará.");
+        console.error("CRITICAL SETUP ISSUE: Google Client ID (NEXT_PUBLIC_GOOGLE_CLIENT_ID) is missing from your .env file or not accessible by the application. Google Drive authentication will NOT work.");
+        console.warn("CONFIGURAÇÃO CRÍTICA: O ID do Cliente Google (NEXT_PUBLIC_GOOGLE_CLIENT_ID) não foi encontrado no seu arquivo .env ou não está acessível pela aplicação. A autenticação com o Google Drive NÃO funcionará. Verifique seu arquivo .env e reinicie o servidor/build.");
         return null;
     }
      if (!gapiLoaded || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
@@ -236,3 +238,5 @@ declare global {
     google: any;
   }
 }
+
+    
