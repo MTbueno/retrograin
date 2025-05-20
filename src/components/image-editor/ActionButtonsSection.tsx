@@ -3,7 +3,7 @@
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
-import { Download, RotateCcwSquareIcon as ResetIcon } from 'lucide-react';
+import { Download, RotateCcwSquare } from 'lucide-react'; // Changed to RotateCcwSquare
 import { useToast } from '@/hooks/use-toast';
 
 const JPEG_QUALITY = 0.92;
@@ -66,7 +66,7 @@ export function ActionButtonsSection() {
         Download Image
       </Button>
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
-        <ResetIcon className="mr-2 h-4 w-4" />
+        <RotateCcwSquare className="mr-2 h-4 w-4" /> 
         Reset Adjustments
       </Button>
     </div>

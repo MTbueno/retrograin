@@ -9,6 +9,7 @@ export interface ImageSettings {
   contrast: number;
   saturation: number;
   exposure: number;
+  hueRotate: number; // Added for Hue Rotation
   rotation: number;
   scaleX: number;
   scaleY: number;
@@ -21,6 +22,7 @@ export const initialImageSettings: ImageSettings = {
   contrast: 1,   // Multiplier, 1 = 100%
   saturation: 1, // Multiplier, 1 = 100%
   exposure: 0,   // Additive/multiplicative, 0 = no change
+  hueRotate: 0,  // Degrees, 0 = no change
   rotation: 0,   // Degrees
   scaleX: 1,     // 1 or -1
   scaleY: 1,     // 1 or -1
@@ -33,6 +35,7 @@ export type SettingsAction =
   | { type: 'SET_CONTRAST'; payload: number }
   | { type: 'SET_SATURATION'; payload: number }
   | { type: 'SET_EXPOSURE'; payload: number }
+  | { type: 'SET_HUE_ROTATE'; payload: number } // Added for Hue Rotation
   | { type: 'ROTATE_CW' }
   | { type: 'ROTATE_CCW' }
   | { type: 'FLIP_HORIZONTAL' }
@@ -51,6 +54,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, saturation: action.payload };
     case 'SET_EXPOSURE':
         return { ...state, exposure: action.payload };
+    case 'SET_HUE_ROTATE': // Added for Hue Rotation
+      return { ...state, hueRotate: action.payload };
     case 'ROTATE_CW':
       return { ...state, rotation: (state.rotation + 90) % 360 };
     case 'ROTATE_CCW':
@@ -63,7 +68,9 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, crop: action.payload };
     case 'APPLY_FILTER':
       if (action.payload === 'grayscale') {
-        return { ...state, filter: action.payload, saturation: 0 };
+        // When applying grayscale, ensure saturation is also set to 0 for consistency
+        // and hueRotate to 0 as it would have no effect.
+        return { ...state, filter: action.payload, saturation: 0, hueRotate: 0 };
       }
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
@@ -76,8 +83,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
 interface ImageEditorContextType {
   originalImage: HTMLImageElement | null;
   setOriginalImage: (image: HTMLImageElement | null) => void;
-  processedImageURI: string | null;
-  setProcessedImageURI: (uri: string | null) => void;
   settings: ImageSettings;
   dispatchSettings: Dispatch<SettingsAction>;
   baseFileName: string;
@@ -92,7 +97,6 @@ const ImageEditorContext = createContext<ImageEditorContextType | undefined>(und
 
 export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [originalImage, setOriginalImage] = useState<HTMLImageElement | null>(null);
-  const [processedImageURI, setProcessedImageURI] = useState<string | null>(null);
   const [settings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
   const [baseFileName, setBaseFileName] = useState<string>('retrograin_image');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,8 +106,10 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
+    // Ensure we are not in preview mode for final quality Data URL generation.
+    // This is a safeguard; ideally, setIsPreviewing(false) is called before this.
     if (isPreviewing) {
-      console.warn("getCanvasDataURL called while isPreviewing is true. Forcing a high-quality render for data URL generation.");
+      console.warn("getCanvasDataURL called while isPreviewing is true. Consider calling setIsPreviewing(false) before this for intended quality.");
     }
     return canvas.toDataURL(type, quality);
   }, [isPreviewing, canvasRef]);
@@ -114,8 +120,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       value={{
         originalImage,
         setOriginalImage,
-        processedImageURI,
-        setProcessedImageURI,
         settings,
         dispatchSettings,
         baseFileName,

@@ -17,9 +17,15 @@ const applyCanvasAdjustments = (
   if (settings.saturation !== 1) filterString += `saturate(${settings.saturation * 100}%) `;
   
   if (settings.exposure !== 0) {
+    // Exposure is a bit tricky with CSS filters. A common way is to use brightness.
+    // We scale the exposure value (-0.5 to 0.5) to a brightness multiplier.
+    // For example, exposure 0 -> brightness 1. exposure 0.5 -> brightness 1.25. exposure -0.5 -> brightness 0.75
+    // This is an approximation.
     const exposureEffect = 1 + settings.exposure * 0.5; 
     filterString += `brightness(${exposureEffect * 100}%) `;
   }
+
+  if (settings.hueRotate !== 0) filterString += `hue-rotate(${settings.hueRotate}deg) `;
 
   if (settings.filter) {
     if (settings.filter === 'grayscale') filterString += `grayscale(100%) `;
