@@ -7,7 +7,6 @@ import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContex
 import { Card } from '@/components/ui/card';
 
 // Helper function to apply filters on canvas
-// Note: Exposure is simplified here. True exposure is more complex.
 const applyCanvasAdjustments = (
   ctx: CanvasRenderingContext2D,
   settings: ImageSettings
@@ -17,11 +16,8 @@ const applyCanvasAdjustments = (
   if (settings.contrast !== 1) filterString += `contrast(${settings.contrast * 100}%) `;
   if (settings.saturation !== 1) filterString += `saturate(${settings.saturation * 100}%) `;
   
-  // Simplified exposure: treat as an additional brightness adjustment
-  // A value of 0 means no change. Positive values brighten, negative darken.
-  // Mapping exposure range (-1 to 1) to a brightness multiplier (e.g., 0.5 to 1.5, or more impactful)
   if (settings.exposure !== 0) {
-    const exposureEffect = 1 + settings.exposure * 0.5; // e.g. exposure 1 -> 150% bright, -1 -> 50% bright
+    const exposureEffect = 1 + settings.exposure * 0.5; 
     filterString += `brightness(${exposureEffect * 100}%) `;
   }
 
@@ -47,12 +43,12 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
   };
 }
 
-
-export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElement> }) {
-  const { originalImage, settings, setProcessedImageURI } = useImageEditor();
+// ImageCanvas no longer takes canvasRef as a prop
+export function ImageCanvas() { 
+  const { originalImage, settings, canvasRef } = useImageEditor(); // Get canvasRef from context
 
   const drawImageImmediately = useCallback(() => {
-    const canvas = canvasRef.current;
+    const canvas = canvasRef.current; // Use canvasRef from context
     if (!canvas || !originalImage) return;
 
     const ctx = canvas.getContext('2d');
@@ -60,7 +56,6 @@ export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
 
     const { rotation, scaleX, scaleY, crop } = settings;
 
-    // Determine crop parameters
     let sx = 0, sy = 0, sWidth = originalImage.naturalWidth, sHeight = originalImage.naturalHeight;
     if (crop) {
       sx = crop.unit === '%' ? (crop.x / 100) * originalImage.naturalWidth : crop.x;
@@ -72,7 +67,6 @@ export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
     const canvasWidth = sWidth;
     const canvasHeight = sHeight;
 
-    // Adjust canvas dimensions for rotation
     if (rotation === 90 || rotation === 270) {
       canvas.width = canvasHeight * Math.abs(scaleY);
       canvas.height = canvasWidth * Math.abs(scaleX);
@@ -82,22 +76,19 @@ export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
     }
     
     ctx.save();
-    // Translate and rotate context
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(scaleX, scaleY);
 
-    // Apply filters and adjustments
     applyCanvasAdjustments(ctx, settings);
     
-    // Draw the (cropped part of the) image
     ctx.drawImage(
       originalImage,
       sx,
       sy,
       sWidth,
       sHeight,
-      -canvasWidth / 2, // Draw relative to new center
+      -canvasWidth / 2, 
       -canvasHeight / 2,
       canvasWidth,
       canvasHeight
@@ -105,23 +96,19 @@ export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
 
     ctx.restore();
     
-    // Update processed image URI
-    setProcessedImageURI(canvas.toDataURL('image/png'));
+    // DO NOT call toDataURL here for performance reasons.
+    // setProcessedImageURI(canvas.toDataURL('image/png')); 
+    // This will be handled on-demand by actions (download, AI enhance)
 
-  }, [originalImage, settings, canvasRef, setProcessedImageURI]);
+  }, [originalImage, settings, canvasRef]); // Removed setProcessedImageURI from dependencies
 
   const debouncedDrawImage = useMemo(
-    () => debounce(drawImageImmediately, 200), // Debounce by 200ms
+    () => debounce(drawImageImmediately, 200), 
     [drawImageImmediately]
   );
 
   useEffect(() => {
     if (originalImage) {
-      // Initial draw without debounce, or if you prefer, always debounce
-      // For settings changes, debouncedDrawImage will be called.
-      // If it's the first load of an image, perhaps draw immediately.
-      // However, `settings` changes will trigger debouncedDraw.
-      // A simple approach is to always use the debounced version.
       debouncedDrawImage();
     }
   }, [originalImage, settings, debouncedDrawImage]);
@@ -137,7 +124,7 @@ export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
 
   return (
     <canvas
-      ref={canvasRef}
+      ref={canvasRef} // Assign canvasRef from context
       className="max-w-full max-h-full object-contain rounded-md shadow-lg"
     />
   );

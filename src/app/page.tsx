@@ -1,5 +1,6 @@
+
 "use client";
-import React, { useRef } from 'react';
+import React from 'react';
 import { ImageEditorProvider } from '@/contexts/ImageEditorContext';
 import { ImageCanvas } from '@/components/image-editor/ImageCanvas';
 import { ControlPanel } from '@/components/image-editor/ControlPanel';
@@ -8,8 +9,7 @@ import { Button } from '@/components/ui/button';
 import { PanelRightOpen } from 'lucide-react';
 
 export default function RetroGrainPage() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
+  // canvasRef is now managed by ImageEditorProvider
   return (
     <ImageEditorProvider>
       <div className="flex h-screen w-screen overflow-hidden">
@@ -26,7 +26,8 @@ export default function RetroGrainPage() {
             </SidebarTrigger>
           </div>
           <div className="flex items-center justify-center w-full h-full">
-            <ImageCanvas canvasRef={canvasRef} />
+            {/* ImageCanvas no longer needs canvasRef prop */}
+            <ImageCanvas />
           </div>
         </SidebarInset>
         <ControlPanel />

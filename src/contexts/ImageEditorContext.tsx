@@ -1,13 +1,14 @@
+
 "use client";
 
-import type { Dispatch, ReactNode } from 'react';
-import React, { createContext, useContext, useReducer, useState } from 'react';
+import type { Dispatch, ReactNode, RefObject } from 'react';
+import React, { createContext, useContext, useReducer, useState, useRef, useCallback } from 'react';
 
 export interface ImageSettings {
   brightness: number;
   contrast: number;
   saturation: number;
-  exposure: number; 
+  exposure: number;
   rotation: number;
   scaleX: number;
   scaleY: number;
@@ -62,11 +63,9 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
     case 'SET_CROP':
       return { ...state, crop: action.payload };
     case 'APPLY_FILTER':
-      // If applying a filter, reset specific adjustments that might conflict or be part of the filter
       if (action.payload === 'grayscale') {
         return { ...state, filter: action.payload, saturation: 0 };
       }
-      // Add other filter-specific adjustments if needed
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
       return initialImageSettings;
@@ -88,6 +87,8 @@ interface ImageEditorContextType {
   setIsLoadingAi: (loading: boolean) => void;
   fileName: string;
   setFileName: (name: string) => void;
+  canvasRef: RefObject<HTMLCanvasElement>;
+  getCanvasDataURL: () => string | null;
 }
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
@@ -98,6 +99,14 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [settings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [fileName, setFileName] = useState<string>('retrograin_image.png');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const getCanvasDataURL = useCallback(() => {
+    if (canvasRef.current) {
+      return canvasRef.current.toDataURL('image/png');
+    }
+    return null;
+  }, []); // canvasRef itself doesn't change, so empty dependency array is fine.
 
   return (
     <ImageEditorContext.Provider
@@ -112,6 +121,8 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         setIsLoadingAi,
         fileName,
         setFileName,
+        canvasRef,
+        getCanvasDataURL,
       }}
     >
       {children}

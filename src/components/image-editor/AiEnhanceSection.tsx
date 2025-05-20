@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
@@ -10,7 +11,9 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function AiEnhanceSection() {
-  const { dispatchSettings, originalImage, processedImageURI, isLoadingAi, setIsLoadingAi } = useImageEditor();
+  // Get getCanvasDataURL to fetch fresh image data for AI
+  // processedImageURI is removed as input, setProcessedImageURI might be used for output if needed.
+  const { dispatchSettings, originalImage, isLoadingAi, setIsLoadingAi, getCanvasDataURL, setProcessedImageURI } = useImageEditor();
   const { toast } = useToast();
   const [aiSuggestions, setAiSuggestions] = useState<SuggestEnhancementsOutput | null>(null);
 
@@ -19,7 +22,10 @@ export function AiEnhanceSection() {
       toast({ title: "No Image", description: "Please upload an image first.", variant: "destructive" });
       return;
     }
-    if (!processedImageURI) {
+
+    const currentImageURIForAI = getCanvasDataURL(); // Get fresh URI for AI
+
+    if (!currentImageURIForAI) {
         toast({ title: "Processing Error", description: "Could not get current image data for AI.", variant: "destructive" });
         return;
     }
@@ -27,8 +33,10 @@ export function AiEnhanceSection() {
     setIsLoadingAi(true);
     setAiSuggestions(null);
     try {
-      const suggestions = await suggestEnhancements({ photoDataUri: processedImageURI });
+      const suggestions = await suggestEnhancements({ photoDataUri: currentImageURIForAI });
       setAiSuggestions(suggestions);
+      // Optionally, if applying AI suggestions should make this the new "processedImageURI" for other features:
+      // setProcessedImageURI(currentImageURIForAI); // This might be redundant if applying settings redraws and download gets fresh
       toast({ title: "AI Suggestions Ready!", description: "Review and apply the suggestions below." });
     } catch (error) {
       console.error("AI Enhancement Error:", error);
@@ -41,18 +49,21 @@ export function AiEnhanceSection() {
   const applyAiSuggestions = () => {
     if (!aiSuggestions) return;
     
-    // Map AI suggestions to our internal settings scale
-    // Assuming AI returns values like 0-200 for brightness/contrast/saturation and -100 to 100 for exposure
     const mappedSuggestions = {
-        brightness: aiSuggestions.brightness / 100, // e.g. 120 -> 1.2
-        contrast: aiSuggestions.contrast / 100,     // e.g. 80 -> 0.8
-        saturation: aiSuggestions.saturation / 100, // e.g. 150 -> 1.5
-        exposure: aiSuggestions.exposure / 100,     // e.g. 20 -> 0.2, -10 -> -0.1
+        brightness: aiSuggestions.brightness / 100,
+        contrast: aiSuggestions.contrast / 100,    
+        saturation: aiSuggestions.saturation / 100,
+        exposure: aiSuggestions.exposure / 100,     
     };
 
     dispatchSettings({ type: 'APPLY_AI_SUGGESTIONS', payload: mappedSuggestions });
+    // After applying settings, the canvas will re-render.
+    // The next call to getCanvasDataURL() for download or another AI enhance will get this updated state.
+    // If we wanted to explicitly set processedImageURI for some reason:
+    // const newUri = getCanvasDataURL();
+    // if (newUri) setProcessedImageURI(newUri);
     toast({ title: "AI Suggestions Applied!", icon: <CheckCircle className="h-4 w-4" /> });
-    setAiSuggestions(null); // Clear suggestions after applying
+    setAiSuggestions(null); 
   };
 
   return (
