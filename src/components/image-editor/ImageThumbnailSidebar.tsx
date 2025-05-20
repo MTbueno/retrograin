@@ -12,12 +12,12 @@ import { cn } from '@/lib/utils';
 export function ImageThumbnailSidebar() {
   const { allImages, activeImageId, setActiveImageId, removeImage } = useImageEditor();
 
-  if (allImages.length === 0) {
+  if (allImages.length === 0 && !activeImageId) { // Ensure it hides if no images and no active one (initial state)
     return null; // Don't render if no images
   }
 
   return (
-    <aside className="w-24 bg-card border-r border-border flex flex-col h-screen sticky top-0">
+    <aside className="w-24 bg-card border-r border-border flex flex-col h-full"> {/* Changed h-screen to h-full, removed sticky top-0 */}
       <div className="p-2 text-center border-b border-border">
         <h3 className="text-sm font-semibold text-primary">Images</h3>
       </div>
