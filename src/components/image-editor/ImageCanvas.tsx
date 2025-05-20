@@ -12,13 +12,33 @@ const applyCssFilters = (
   settings: ImageSettings
 ) => {
   let filterString = '';
-  if (settings.brightness !== 1) filterString += `brightness(${settings.brightness * 100}%) `;
-  if (settings.contrast !== 1) filterString += `contrast(${settings.contrast * 100}%) `;
+  let baseBrightness = settings.brightness;
+  let baseContrast = settings.contrast;
+
+  // Apply Blacks adjustment by modulating brightness and contrast
+  if (settings.blacks !== 0) {
+    // If blacks > 0 (lift), decrease contrast, slightly increase brightness
+    // If blacks < 0 (crush), increase contrast, slightly decrease brightness
+    // The settings.blacks is from -1 to 1
+    // Adjust contrast: max 50% change based on blacks setting
+    baseContrast *= (1 - settings.blacks * 0.5); 
+    // Adjust brightness: max 20% change based on blacks setting
+    baseBrightness *= (1 + settings.blacks * 0.2);
+
+    // Clamp values to avoid extremes, e.g., 0.1 to 3 for contrast/brightness
+    baseContrast = Math.max(0.1, Math.min(3, baseContrast));
+    baseBrightness = Math.max(0.1, Math.min(3, baseBrightness));
+  }
+
+
+  if (baseBrightness !== 1) filterString += `brightness(${baseBrightness * 100}%) `;
+  if (baseContrast !== 1) filterString += `contrast(${baseContrast * 100}%) `;
   if (settings.saturation !== 1) filterString += `saturate(${settings.saturation * 100}%) `;
   
   if (settings.exposure !== 0) {
+    // Exposure might interact with the new blacks adjustment. Keep its effect relative.
     const exposureEffect = 1 + settings.exposure * 0.5; 
-    filterString += `brightness(${exposureEffect * 100}%) `; // Approximating exposure with brightness
+    filterString += `brightness(${exposureEffect * 100}%) `;
   }
 
   if (settings.hueRotate !== 0) filterString += `hue-rotate(${settings.hueRotate}deg) `;
@@ -55,7 +75,7 @@ export function ImageCanvas() {
 
   // Generate noise pattern
   useEffect(() => {
-    if (typeof window !== 'undefined') { // Ensure this runs only on client
+    if (typeof window !== 'undefined') { 
         const noiseCv = document.createElement('canvas');
         noiseCv.width = NOISE_CANVAS_SIZE;
         noiseCv.height = NOISE_CANVAS_SIZE;
@@ -64,11 +84,11 @@ export function ImageCanvas() {
             const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                const rand = Math.floor(Math.random() * 150) + 50; // Grayscale noise, not too dark or light
-                data[i] = rand;     // red
-                data[i + 1] = rand; // green
-                data[i + 2] = rand; // blue
-                data[i + 3] = 255;  // alpha
+                const rand = Math.floor(Math.random() * 150) + 50; 
+                data[i] = rand;     
+                data[i + 1] = rand; 
+                data[i + 2] = rand; 
+                data[i + 3] = 255;  
             }
             noiseCtx.putImageData(imageData, 0, 0);
             noiseCanvasRef.current = noiseCv;
@@ -135,7 +155,7 @@ export function ImageCanvas() {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
 
-    // 1. Apply CSS-like filters
+    // 1. Apply CSS-like filters (includes Blacks adjustment now)
     applyCssFilters(ctx, settings);
     
     // 2. Draw the image (filters are applied here)
@@ -146,52 +166,73 @@ export function ImageCanvas() {
 
     // 3. Reset CSS filters for manual drawing effects
     ctx.filter = 'none';
-
-    // 4. Apply Color Temperature
-    if (settings.colorTemperature !== 0) {
-      const temp = settings.colorTemperature / 100; // Normalize to -1 to 1
-      const alpha = Math.abs(temp) * 0.2; // Max 20% opacity for overlay
-      if (temp > 0) { // Warm
-        ctx.fillStyle = `rgba(255, 165, 0, ${alpha})`; // Orange
-      } else { // Cool
-        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`; // Blue
-      }
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
-      ctx.globalCompositeOperation = 'source-over'; // Reset
-    }
-
-    // 5. Apply Tint (Shadows, Highlights) - Order might matter, and blend modes are swapped as per user feedback
     const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-    // Shadows Tint (User reports it was affecting highlights, so trying 'color-dodge')
+    // 4. Apply Highlights & Shadows (Canvas Blending)
+    // Shadows (settings.shadows: -1 to 1)
+    if (settings.shadows > 0) { // Brighten shadows
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = settings.shadows * 0.5; // Max 50% effect
+      ctx.fillStyle = 'rgb(128, 128, 128)'; // Mid-gray for screen to affect dark areas
+      ctx.fillRect(...rectArgs);
+    } else if (settings.shadows < 0) { // Darken shadows
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.3; // Max 30% effect
+      ctx.fillStyle = 'rgb(50, 50, 50)'; // Dark gray for multiply
+      ctx.fillRect(...rectArgs);
+    }
+    ctx.globalAlpha = 1.0; // Reset alpha
+    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+
+    // Highlights (settings.highlights: -1 to 1)
+    if (settings.highlights < 0) { // Darken/recover highlights
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.5; // Max 50% effect
+      ctx.fillStyle = 'rgb(128, 128, 128)'; // Mid-gray to pull down highlights
+      ctx.fillRect(...rectArgs);
+    } else if (settings.highlights > 0) { // Brighten highlights
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = settings.highlights * 0.3; // Max 30% effect
+      ctx.fillStyle = 'rgb(200, 200, 200)'; // Light gray
+      ctx.fillRect(...rectArgs);
+    }
+    ctx.globalAlpha = 1.0; // Reset alpha
+    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+
+
+    // 5. Apply Color Temperature
+    if (settings.colorTemperature !== 0) {
+      const temp = settings.colorTemperature / 100; 
+      const alpha = Math.abs(temp) * 0.2; 
+      if (temp > 0) { 
+        ctx.fillStyle = `rgba(255, 165, 0, ${alpha})`; 
+      } else { 
+        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`; 
+      }
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.fillRect(...rectArgs);
+      ctx.globalCompositeOperation = 'source-over'; 
+    }
+
+    // 6. Apply Tint (Shadows, Highlights)
     if (settings.tintShadowsIntensity > 0 && settings.tintShadowsColor) {
-      ctx.globalCompositeOperation = 'color-dodge'; // Swapped from color-burn
+      ctx.globalCompositeOperation = 'color-dodge'; 
       ctx.fillStyle = settings.tintShadowsColor;
       ctx.globalAlpha = settings.tintShadowsIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
         
-    // Highlights Tint (User reports it was affecting shadows, so trying 'color-burn')
     if (settings.tintHighlightsIntensity > 0 && settings.tintHighlightsColor) {
-      ctx.globalCompositeOperation = 'color-burn'; // Swapped from color-dodge
+      ctx.globalCompositeOperation = 'color-burn'; 
       ctx.fillStyle = settings.tintHighlightsColor;
       ctx.globalAlpha = settings.tintHighlightsIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
 
-    // Midtones Tint Removed
-    // if (settings.tintMidtonesIntensity > 0 && settings.tintMidtonesColor) {
-    //   ctx.globalCompositeOperation = 'soft-light';
-    //   ctx.fillStyle = settings.tintMidtonesColor;
-    //   ctx.globalAlpha = settings.tintMidtonesIntensity * TINT_EFFECT_SCALING_FACTOR;
-    //   ctx.fillRect(...rectArgs);
-    // }
-
-    ctx.globalAlpha = 1.0; // Reset alpha
-    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+    ctx.globalAlpha = 1.0; 
+    ctx.globalCompositeOperation = 'source-over'; 
     
-    // 6. Apply Vignette
+    // 7. Apply Vignette
     if (settings.vignetteIntensity > 0) {
       const centerX = 0; 
       const centerY = 0;
@@ -203,16 +244,16 @@ export function ImageCanvas() {
       gradient.addColorStop(0, `rgba(0,0,0,0)`);
       gradient.addColorStop(1, `rgba(0,0,0,${settings.vignetteIntensity})`);
       ctx.fillStyle = gradient;
-      ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+      ctx.fillRect(...rectArgs);
     }
 
-    // 7. Apply Grain
+    // 8. Apply Grain
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
         ctx.save(); 
         ctx.fillStyle = noisePatternRef.current;
         ctx.globalAlpha = settings.grainIntensity * 0.5; 
         ctx.globalCompositeOperation = 'overlay';
-        ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+        ctx.fillRect(...rectArgs);
         ctx.restore(); 
     }
 

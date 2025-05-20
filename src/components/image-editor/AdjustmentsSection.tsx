@@ -4,7 +4,7 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush } from 'lucide-react';
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 
@@ -13,9 +13,9 @@ export function AdjustmentsSection() {
 
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
+          'highlights' | 'shadows' | 'blacks' | // New
           'hueRotate' | 'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 'tintShadowsIntensity' | 
-          // 'tintMidtonesIntensity' | // Removed
           'tintHighlightsIntensity',
     value: number
   ) => {
@@ -32,6 +32,15 @@ export function AdjustmentsSection() {
       case 'exposure':
         dispatchSettings({ type: 'SET_EXPOSURE', payload: value });
         break;
+      case 'highlights': // New
+        dispatchSettings({ type: 'SET_HIGHLIGHTS', payload: value });
+        break;
+      case 'shadows':    // New
+        dispatchSettings({ type: 'SET_SHADOWS', payload: value });
+        break;
+      case 'blacks':     // New
+        dispatchSettings({ type: 'SET_BLACKS', payload: value });
+        break;
       case 'hueRotate':
         dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
         break;
@@ -47,9 +56,6 @@ export function AdjustmentsSection() {
       case 'tintShadowsIntensity':
         dispatchSettings({ type: 'SET_TINT_SHADOWS_INTENSITY', payload: value });
         break;
-      // case 'tintMidtonesIntensity': // Removed
-      //   dispatchSettings({ type: 'SET_TINT_MIDTONES_INTENSITY', payload: value }); // Removed
-      //   break; // Removed
       case 'tintHighlightsIntensity':
         dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value });
         break;
@@ -57,7 +63,7 @@ export function AdjustmentsSection() {
   };
 
   const handleTintColorChange = (
-    tonalRange: 'shadows' | 'highlights', // Removed 'midtones'
+    tonalRange: 'shadows' | 'highlights',
     color: string
   ) => {
     const isValidHex = /^#[0-9A-F]{6}$/i.test(color);
@@ -68,8 +74,6 @@ export function AdjustmentsSection() {
 
     if (tonalRange === 'shadows') {
       dispatchSettings({ type: 'SET_TINT_SHADOWS_COLOR', payload: color });
-    // } else if (tonalRange === 'midtones') { // Removed
-    //   dispatchSettings({ type: 'SET_TINT_MIDTONES_COLOR', payload: color }); // Removed
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
@@ -82,6 +86,9 @@ export function AdjustmentsSection() {
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
+    { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 }, // New
+    { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },          // New
+    { id: 'blacks', label: 'Blacks', icon: Baseline, value: settings.blacks, min: -1, max: 1, step: 0.01 },            // New
   ];
 
   const colorAdjustments = [
@@ -104,6 +111,7 @@ export function AdjustmentsSection() {
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
+           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}%` : // New display for H/S/B
            isIntensitySlider || control.id.includes('Intensity') ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
@@ -131,7 +139,7 @@ export function AdjustmentsSection() {
   );
 
   const renderTintControlGroup = (
-    tonalRange: 'shadows' | 'highlights', // Removed 'midtones'
+    tonalRange: 'shadows' | 'highlights',
     label: string,
     colorValue: string,
     intensityValue: number
@@ -142,7 +150,7 @@ export function AdjustmentsSection() {
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 0.5, step: 0.01
+        min: 0, max: 0.5, step: 0.01 // Max intensity for tint is 50%
       }, true)}
 
       {intensityValue > 0 && (
@@ -182,7 +190,6 @@ export function AdjustmentsSection() {
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Tint</Label>
       {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity)}
-      {/* {renderTintControlGroup('midtones', 'Midtones', settings.tintMidtonesColor, settings.tintMidtonesIntensity)} // Removed */}
       {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity)}
 
       <Separator className="my-4" />

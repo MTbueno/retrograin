@@ -9,14 +9,15 @@ export interface ImageSettings {
   contrast: number;
   saturation: number;
   exposure: number;
+  highlights: number; // New: -1 to 1 (darken to brighten highlights)
+  shadows: number;    // New: -1 to 1 (darken to brighten shadows)
+  blacks: number;     // New: -1 to 1 (crush to lift blacks)
   hueRotate: number;
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
   tintShadowsColor: string;
   tintShadowsIntensity: number;
-  // tintMidtonesColor: string; // Removed
-  // tintMidtonesIntensity: number; // Removed
   tintHighlightsColor: string;
   tintHighlightsIntensity: number;
   rotation: number;
@@ -31,14 +32,15 @@ export const initialImageSettings: ImageSettings = {
   contrast: 1,
   saturation: 1,
   exposure: 0,
+  highlights: 0, // New
+  shadows: 0,    // New
+  blacks: 0,     // New
   hueRotate: 0,
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
   tintShadowsColor: '',
   tintShadowsIntensity: 0,
-  // tintMidtonesColor: '', // Removed
-  // tintMidtonesIntensity: 0, // Removed
   tintHighlightsColor: '',
   tintHighlightsIntensity: 0,
   rotation: 0,
@@ -53,14 +55,15 @@ export type SettingsAction =
   | { type: 'SET_CONTRAST'; payload: number }
   | { type: 'SET_SATURATION'; payload: number }
   | { type: 'SET_EXPOSURE'; payload: number }
+  | { type: 'SET_HIGHLIGHTS'; payload: number } // New
+  | { type: 'SET_SHADOWS'; payload: number }    // New
+  | { type: 'SET_BLACKS'; payload: number }     // New
   | { type: 'SET_HUE_ROTATE'; payload: number }
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
   | { type: 'SET_TINT_SHADOWS_COLOR'; payload: string }
   | { type: 'SET_TINT_SHADOWS_INTENSITY'; payload: number }
-  // | { type: 'SET_TINT_MIDTONES_COLOR'; payload: string } // Removed
-  // | { type: 'SET_TINT_MIDTONES_INTENSITY'; payload: number } // Removed
   | { type: 'SET_TINT_HIGHLIGHTS_COLOR'; payload: string }
   | { type: 'SET_TINT_HIGHLIGHTS_INTENSITY'; payload: number }
   | { type: 'ROTATE_CW' }
@@ -80,7 +83,13 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
     case 'SET_SATURATION':
       return { ...state, saturation: action.payload };
     case 'SET_EXPOSURE':
-        return { ...state, exposure: action.payload };
+      return { ...state, exposure: action.payload };
+    case 'SET_HIGHLIGHTS': // New
+      return { ...state, highlights: action.payload };
+    case 'SET_SHADOWS':    // New
+      return { ...state, shadows: action.payload };
+    case 'SET_BLACKS':     // New
+      return { ...state, blacks: action.payload };
     case 'SET_HUE_ROTATE':
       return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
@@ -93,10 +102,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, tintShadowsColor: action.payload };
     case 'SET_TINT_SHADOWS_INTENSITY':
       return { ...state, tintShadowsIntensity: action.payload };
-    // case 'SET_TINT_MIDTONES_COLOR': // Removed
-    //   return { ...state, tintMidtonesColor: action.payload }; // Removed
-    // case 'SET_TINT_MIDTONES_INTENSITY': // Removed
-    //   return { ...state, tintMidtonesIntensity: action.payload }; // Removed
     case 'SET_TINT_HIGHLIGHTS_COLOR':
       return { ...state, tintHighlightsColor: action.payload };
     case 'SET_TINT_HIGHLIGHTS_INTENSITY':
