@@ -123,7 +123,7 @@ export function AdjustmentsSection() {
         onPointerDown={() => {
           if (originalImage) setIsPreviewing(true);
         }}
-        onValueCommit={() => { // Corrected prop name
+        onValueCommit={() => { 
              if (originalImage) setIsPreviewing(false);
         }}
       />
@@ -142,7 +142,7 @@ export function AdjustmentsSection() {
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 1, step: 0.01
+        min: 0, max: 0.5, step: 0.01 // Max changed to 0.5
       }, true)}
 
       {intensityValue > 0 && (
@@ -191,3 +191,4 @@ export function AdjustmentsSection() {
     </div>
   );
 }
+
