@@ -84,7 +84,7 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 
 const PREVIEW_SCALE_FACTOR = 0.5; 
 const NOISE_CANVAS_SIZE = 100; 
-const TINT_EFFECT_SCALING_FACTOR = 0.6; 
+const TINT_EFFECT_SCALING_FACTOR = 0.3; // Reduced from 0.6 for more subtlety
 
 export function ImageCanvas() { 
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
@@ -180,15 +180,11 @@ export function ImageCanvas() {
     );
 
     // Draw visual crop rectangle if crop is active
-    if (settings.crop && (sWidth < originalImage.naturalWidth || sHeight < originalImage.naturalHeight)) {
-        // Temporarily save current filter to restore it later
+    if (settings.crop) { 
         const currentFilter = ctx.filter;
         ctx.filter = 'none'; // Ensure border is not affected by image filters
 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        // Adjust lineWidth based on the effective scale applied to the content *within* the preview scaling
-        // If PREVIEW_SCALE_FACTOR is 0.5, the line needs to be twice as thick to appear consistent.
-        // The scaling due to scaleX/scaleY is already part of the transformation matrix.
         ctx.lineWidth = 2 / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1) ; 
         ctx.strokeRect(
             -contentWidth / 2,
@@ -203,34 +199,37 @@ export function ImageCanvas() {
     ctx.filter = 'none';
     const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-    if (settings.shadows > 0) { 
+    // Shadows adjustment (canvas based)
+    if (settings.shadows > 0) { // Lighten shadows
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.35 * 0.7; 
+      ctx.globalAlpha = settings.shadows * 0.35 * 0.5; // Reduced factor
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.shadows < 0) { 
+    } else if (settings.shadows < 0) { // Darken shadows
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.2 * 0.7; 
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.2 * 0.5; // Reduced factor
       ctx.fillStyle = 'rgb(50, 50, 50)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over'; 
 
-    if (settings.highlights < 0) { 
+    // Highlights adjustment (canvas based)
+    if (settings.highlights < 0) { // Darken highlights (recover)
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.35 * 0.7; 
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.35 * 0.5; // Reduced factor
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.highlights > 0) { 
+    } else if (settings.highlights > 0) { // Brighten highlights
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.2 * 0.7; 
+      ctx.globalAlpha = settings.highlights * 0.2 * 0.5; // Reduced factor
       ctx.fillStyle = 'rgb(200, 200, 200)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over';
 
+    // Color Temperature
     if (settings.colorTemperature !== 0) {
       const temp = settings.colorTemperature / 100; 
       const alpha = Math.abs(temp) * 0.2; 
@@ -245,7 +244,7 @@ export function ImageCanvas() {
     }
 
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
-      if (intensity > 0 && baseColorHex) {
+      if (intensity > 0 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') { // Added check for empty/black hex
         const rgbColor = hexToRgb(baseColorHex);
         if (rgbColor) {
           const saturatedRgb = desaturateRgb(rgbColor, saturation);
@@ -258,7 +257,9 @@ export function ImageCanvas() {
         }
       }
     };
-
+    
+    // Apply Tints (Shadows and Highlights, Midtones removed)
+    // Note: The "inversion" of color-dodge and color-burn is based on user feedback for desired effect.
     applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
     applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
         
@@ -326,4 +327,3 @@ export function ImageCanvas() {
     />
   );
 }
-

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useImageEditor } from '@/contexts/ImageEditorContext';
+import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -14,18 +14,48 @@ export function TransformsSection() {
 
   const handleCropChange = (axis: 'x' | 'y' | 'width' | 'height', value: string) => {
     const numValue = parseInt(value, 10);
-    if (isNaN(numValue)) return;
 
-    const currentCrop = settings.crop || { x: 0, y: 0, width: 100, height: 100, unit: '%'}; // Default to % for safety, will be px after first input
-    dispatchSettings({ type: 'SET_CROP', payload: { ...currentCrop, [axis]: numValue, unit: 'px' } }); // Force unit to px on change
+    let currentX = settings.crop?.x ?? 0;
+    let currentY = settings.crop?.y ?? 0;
+    let currentWidth = settings.crop?.width ?? (originalImage ? originalImage.naturalWidth : 0);
+    let currentHeight = settings.crop?.height ?? (originalImage ? originalImage.naturalHeight : 0);
+
+    if (!settings.crop && originalImage) { // If was null, initialize with full dimensions
+        currentWidth = originalImage.naturalWidth;
+        currentHeight = originalImage.naturalHeight;
+    }
+
+    if (!isNaN(numValue)) {
+      if (axis === 'x') currentX = numValue;
+      else if (axis === 'y') currentY = numValue;
+      else if (axis === 'width') currentWidth = numValue > 0 ? numValue : (originalImage ? originalImage.naturalWidth : 1);
+      else if (axis === 'height') currentHeight = numValue > 0 ? numValue : (originalImage ? originalImage.naturalHeight : 1);
+    } else {
+      // Handle cleared input: reset to default for that axis
+      if (axis === 'x') currentX = 0;
+      else if (axis === 'y') currentY = 0;
+      else if (axis === 'width') currentWidth = originalImage ? originalImage.naturalWidth : 1;
+      else if (axis === 'height') currentHeight = originalImage ? originalImage.naturalHeight : 1;
+    }
+    
+    // Ensure width/height are at least 1 if an image exists and crop is being applied
+    if (originalImage) {
+        currentWidth = Math.max(1, currentWidth);
+        currentHeight = Math.max(1, currentHeight);
+    }
+
+    dispatchSettings({
+      type: 'SET_CROP',
+      payload: {
+        x: currentX,
+        y: currentY,
+        width: currentWidth,
+        height: currentHeight,
+        unit: 'px',
+      },
+    });
   };
   
-  const cropX = settings.crop?.x ?? 0;
-  const cropY = settings.crop?.y ?? 0;
-  const cropWidth = settings.crop?.width ?? (originalImage ? originalImage.naturalWidth : 100);
-  const cropHeight = settings.crop?.height ?? (originalImage ? originalImage.naturalHeight : 100);
-  // const cropUnit = settings.crop?.unit ?? 'px'; // Default to px if not set, or could be % - now forced to px
-
   return (
     <div className="space-y-4 w-full max-w-[14rem] mx-auto">
       <Label className="text-sm font-medium block mb-2">Transforms</Label>
@@ -86,7 +116,7 @@ export function TransformsSection() {
         <Button variant="outline" size="sm" className="w-full mt-1" onClick={() => dispatchSettings({ type: 'SET_CROP', payload: null })} disabled={!originalImage || !settings.crop}>
             Remove Crop
         </Button>
-        <p className="text-xs text-muted-foreground mt-1">Note: Crop values are in pixels, based on original image dimensions. Empty fields mean no crop or use full dimension.</p>
+        <p className="text-xs text-muted-foreground mt-1">Note: Crop values are in pixels. Empty fields reset to defaults.</p>
       </div>
     </div>
   );
