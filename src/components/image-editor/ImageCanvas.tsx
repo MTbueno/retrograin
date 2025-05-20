@@ -161,32 +161,32 @@ export function ImageCanvas() {
       ctx.globalCompositeOperation = 'source-over'; // Reset
     }
 
-    // 5. Apply Tint (Shadows, Midtones, Highlights)
+    // 5. Apply Tint (Shadows, Highlights) - Order might matter, and blend modes are swapped as per user feedback
     const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-    // Shadows Tint (Applied first in new order)
+    // Shadows Tint (User reports it was affecting highlights, so trying 'color-dodge')
     if (settings.tintShadowsIntensity > 0 && settings.tintShadowsColor) {
-      ctx.globalCompositeOperation = 'color-burn';
+      ctx.globalCompositeOperation = 'color-dodge'; // Swapped from color-burn
       ctx.fillStyle = settings.tintShadowsColor;
       ctx.globalAlpha = settings.tintShadowsIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
-    
-    // Midtones Tint (Applied second in new order)
-    if (settings.tintMidtonesIntensity > 0 && settings.tintMidtonesColor) {
-      ctx.globalCompositeOperation = 'soft-light';
-      ctx.fillStyle = settings.tintMidtonesColor;
-      ctx.globalAlpha = settings.tintMidtonesIntensity * TINT_EFFECT_SCALING_FACTOR;
-      ctx.fillRect(...rectArgs);
-    }
-    
-    // Highlights Tint (Applied third in new order)
+        
+    // Highlights Tint (User reports it was affecting shadows, so trying 'color-burn')
     if (settings.tintHighlightsIntensity > 0 && settings.tintHighlightsColor) {
-      ctx.globalCompositeOperation = 'color-dodge';
+      ctx.globalCompositeOperation = 'color-burn'; // Swapped from color-dodge
       ctx.fillStyle = settings.tintHighlightsColor;
       ctx.globalAlpha = settings.tintHighlightsIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
+
+    // Midtones Tint Removed
+    // if (settings.tintMidtonesIntensity > 0 && settings.tintMidtonesColor) {
+    //   ctx.globalCompositeOperation = 'soft-light';
+    //   ctx.fillStyle = settings.tintMidtonesColor;
+    //   ctx.globalAlpha = settings.tintMidtonesIntensity * TINT_EFFECT_SCALING_FACTOR;
+    //   ctx.fillRect(...rectArgs);
+    // }
 
     ctx.globalAlpha = 1.0; // Reset alpha
     ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
@@ -254,4 +254,3 @@ export function ImageCanvas() {
     />
   );
 }
-

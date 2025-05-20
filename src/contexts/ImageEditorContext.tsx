@@ -15,8 +15,8 @@ export interface ImageSettings {
   colorTemperature: number;
   tintShadowsColor: string;
   tintShadowsIntensity: number;
-  tintMidtonesColor: string;
-  tintMidtonesIntensity: number;
+  // tintMidtonesColor: string; // Removed
+  // tintMidtonesIntensity: number; // Removed
   tintHighlightsColor: string;
   tintHighlightsIntensity: number;
   rotation: number;
@@ -37,8 +37,8 @@ export const initialImageSettings: ImageSettings = {
   colorTemperature: 0,
   tintShadowsColor: '',
   tintShadowsIntensity: 0,
-  tintMidtonesColor: '',
-  tintMidtonesIntensity: 0,
+  // tintMidtonesColor: '', // Removed
+  // tintMidtonesIntensity: 0, // Removed
   tintHighlightsColor: '',
   tintHighlightsIntensity: 0,
   rotation: 0,
@@ -59,8 +59,8 @@ export type SettingsAction =
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
   | { type: 'SET_TINT_SHADOWS_COLOR'; payload: string }
   | { type: 'SET_TINT_SHADOWS_INTENSITY'; payload: number }
-  | { type: 'SET_TINT_MIDTONES_COLOR'; payload: string }
-  | { type: 'SET_TINT_MIDTONES_INTENSITY'; payload: number }
+  // | { type: 'SET_TINT_MIDTONES_COLOR'; payload: string } // Removed
+  // | { type: 'SET_TINT_MIDTONES_INTENSITY'; payload: number } // Removed
   | { type: 'SET_TINT_HIGHLIGHTS_COLOR'; payload: string }
   | { type: 'SET_TINT_HIGHLIGHTS_INTENSITY'; payload: number }
   | { type: 'ROTATE_CW' }
@@ -93,10 +93,10 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, tintShadowsColor: action.payload };
     case 'SET_TINT_SHADOWS_INTENSITY':
       return { ...state, tintShadowsIntensity: action.payload };
-    case 'SET_TINT_MIDTONES_COLOR':
-      return { ...state, tintMidtonesColor: action.payload };
-    case 'SET_TINT_MIDTONES_INTENSITY':
-      return { ...state, tintMidtonesIntensity: action.payload };
+    // case 'SET_TINT_MIDTONES_COLOR': // Removed
+    //   return { ...state, tintMidtonesColor: action.payload }; // Removed
+    // case 'SET_TINT_MIDTONES_INTENSITY': // Removed
+    //   return { ...state, tintMidtonesIntensity: action.payload }; // Removed
     case 'SET_TINT_HIGHLIGHTS_COLOR':
       return { ...state, tintHighlightsColor: action.payload };
     case 'SET_TINT_HIGHLIGHTS_INTENSITY':

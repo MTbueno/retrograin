@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider'; // Import the new component
+import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 
 export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
@@ -15,7 +15,8 @@ export function AdjustmentsSection() {
     type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
           'hueRotate' | 'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 'tintShadowsIntensity' | 
-          'tintMidtonesIntensity' | 'tintHighlightsIntensity',
+          // 'tintMidtonesIntensity' | // Removed
+          'tintHighlightsIntensity',
     value: number
   ) => {
     switch (type) {
@@ -46,9 +47,9 @@ export function AdjustmentsSection() {
       case 'tintShadowsIntensity':
         dispatchSettings({ type: 'SET_TINT_SHADOWS_INTENSITY', payload: value });
         break;
-      case 'tintMidtonesIntensity':
-        dispatchSettings({ type: 'SET_TINT_MIDTONES_INTENSITY', payload: value });
-        break;
+      // case 'tintMidtonesIntensity': // Removed
+      //   dispatchSettings({ type: 'SET_TINT_MIDTONES_INTENSITY', payload: value }); // Removed
+      //   break; // Removed
       case 'tintHighlightsIntensity':
         dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value });
         break;
@@ -56,10 +57,9 @@ export function AdjustmentsSection() {
   };
 
   const handleTintColorChange = (
-    tonalRange: 'shadows' | 'midtones' | 'highlights',
+    tonalRange: 'shadows' | 'highlights', // Removed 'midtones'
     color: string
   ) => {
-    // Basic hex color validation
     const isValidHex = /^#[0-9A-F]{6}$/i.test(color);
     if (!isValidHex && color !== '') { 
         console.warn("Invalid hex color from spectrum slider:", color); 
@@ -68,8 +68,8 @@ export function AdjustmentsSection() {
 
     if (tonalRange === 'shadows') {
       dispatchSettings({ type: 'SET_TINT_SHADOWS_COLOR', payload: color });
-    } else if (tonalRange === 'midtones') {
-      dispatchSettings({ type: 'SET_TINT_MIDTONES_COLOR', payload: color });
+    // } else if (tonalRange === 'midtones') { // Removed
+    //   dispatchSettings({ type: 'SET_TINT_MIDTONES_COLOR', payload: color }); // Removed
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
@@ -117,7 +117,7 @@ export function AdjustmentsSection() {
         value={[control.value]}
         onValueChange={(val) => {
           handleSliderChange(control.id as any, val[0]);
-          if (originalImage) setIsPreviewing(true); // Start preview on value change (drag)
+          if (originalImage) setIsPreviewing(true);
         }}
         disabled={!originalImage}
         onPointerDown={() => {
@@ -131,7 +131,7 @@ export function AdjustmentsSection() {
   );
 
   const renderTintControlGroup = (
-    tonalRange: 'shadows' | 'midtones' | 'highlights',
+    tonalRange: 'shadows' | 'highlights', // Removed 'midtones'
     label: string,
     colorValue: string,
     intensityValue: number
@@ -142,11 +142,11 @@ export function AdjustmentsSection() {
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 0.5, step: 0.01 // Max changed to 0.5
+        min: 0, max: 0.5, step: 0.01
       }, true)}
 
       {intensityValue > 0 && (
-        <div className="space-y-1.5 pl-6"> {/* Indent color controls */}
+        <div className="space-y-1.5 pl-6">
           <div className="flex items-center space-x-2">
             <Label htmlFor={`tint${tonalRange}ColorSwatch`} className="text-xs text-muted-foreground shrink-0">
               Color:
@@ -154,15 +154,15 @@ export function AdjustmentsSection() {
             <div 
               id={`tint${tonalRange}ColorSwatch`}
               className="h-5 w-5 rounded-sm border border-input shrink-0" 
-              style={{ backgroundColor: colorValue || '#808080' }} // Default to gray if no color
+              style={{ backgroundColor: colorValue || '#808080' }}
             />
           </div>
           <ColorSpectrumSlider
             onColorChange={(newColor) => {
               handleTintColorChange(tonalRange, newColor);
-              if (originalImage) setIsPreviewing(false); // Ensure full render after color pick
+              if (originalImage) setIsPreviewing(false);
             }}
-            className="h-4" // Adjust height of the spectrum slider itself
+            className="h-4"
           />
         </div>
       )}
@@ -182,7 +182,7 @@ export function AdjustmentsSection() {
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Tint</Label>
       {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity)}
-      {renderTintControlGroup('midtones', 'Midtones', settings.tintMidtonesColor, settings.tintMidtonesIntensity)}
+      {/* {renderTintControlGroup('midtones', 'Midtones', settings.tintMidtonesColor, settings.tintMidtonesIntensity)} // Removed */}
       {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity)}
 
       <Separator className="my-4" />
@@ -191,4 +191,3 @@ export function AdjustmentsSection() {
     </div>
   );
 }
-
