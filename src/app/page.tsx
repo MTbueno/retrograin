@@ -15,7 +15,9 @@ export default function RetroGrainPage() {
   return (
     <ImageEditorProvider>
       <div className="flex h-screen w-screen overflow-hidden">
-        <SidebarInset className="flex flex-1 overflow-hidden"> {/* Added flex and overflow-hidden here */}
+        {/* SidebarInset should act as a flex-row container for its direct child */}
+        <SidebarInset className="flex flex-1 overflow-hidden"> 
+          {/* This div is the direct child that will manage the horizontal layout of thumbnail sidebar and canvas area */}
           <div className="flex flex-1 h-full"> {/* Wrapper for thumbnail sidebar and canvas area */}
             {isThumbnailSidebarVisible && <ImageThumbnailSidebar />}
             
