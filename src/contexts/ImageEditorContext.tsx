@@ -89,6 +89,8 @@ interface ImageEditorContextType {
   setFileName: (name: string) => void;
   canvasRef: RefObject<HTMLCanvasElement>;
   getCanvasDataURL: () => string | null;
+  isPreviewing: boolean;
+  setIsPreviewing: (isPreviewing: boolean) => void;
 }
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
@@ -100,13 +102,21 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [fileName, setFileName] = useState<string>('retrograin_image.png');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
 
   const getCanvasDataURL = useCallback(() => {
     if (canvasRef.current) {
+      // Ensure final render quality before getting data URL if in preview mode
+      if (isPreviewing) {
+        // This is a bit of a hack. Ideally, getCanvasDataURL would trigger a synchronous high-quality render.
+        // For now, we assume that critical actions (download, AI) will set isPreviewing to false before calling this.
+        // Or, the component calling this should ensure isPreviewing is false.
+        console.warn("getCanvasDataURL called while isPreviewing is true. Ensure high quality render.");
+      }
       return canvasRef.current.toDataURL('image/png');
     }
     return null;
-  }, []); // canvasRef itself doesn't change, so empty dependency array is fine.
+  }, [isPreviewing]); // Added isPreviewing to dependencies, though its direct effect here is mostly a warning.
 
   return (
     <ImageEditorContext.Provider
@@ -123,6 +133,8 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         setFileName,
         canvasRef,
         getCanvasDataURL,
+        isPreviewing,
+        setIsPreviewing,
       }}
     >
       {children}

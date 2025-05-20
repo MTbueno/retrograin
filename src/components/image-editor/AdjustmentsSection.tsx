@@ -7,7 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Sun, Contrast, Droplets, Aperture } from 'lucide-react'; // Aperture for Exposure
 
 export function AdjustmentsSection() {
-  const { settings, dispatchSettings, originalImage } = useImageEditor();
+  const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
 
   const handleSliderChange = (type: 'brightness' | 'contrast' | 'saturation' | 'exposure', value: number) => {
     switch (type) {
@@ -55,6 +55,12 @@ export function AdjustmentsSection() {
             value={[control.value]}
             onValueChange={(val) => handleSliderChange(control.id as any, val[0])}
             disabled={!originalImage}
+            onPointerDown={() => {
+              if (originalImage) setIsPreviewing(true);
+            }}
+            onPointerUp={() => {
+              if (originalImage) setIsPreviewing(false);
+            }}
           />
         </div>
       ))}
