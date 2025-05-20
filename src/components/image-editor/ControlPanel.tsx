@@ -14,6 +14,7 @@ import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
 import { FiltersSection } from './FiltersSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
+import { AuthSection } from './AuthSection'; // Added AuthSection
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function ControlPanel() {
@@ -35,8 +36,10 @@ export function ControlPanel() {
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t">
+      <SidebarFooter className="p-4 border-t space-y-4"> {/* Added space-y-4 for spacing */}
         <ActionButtonsSection />
+        <SidebarSeparator /> {/* Added separator */}
+        <AuthSection /> {/* Added AuthSection here */}
       </SidebarFooter>
     </Sidebar>
   );
