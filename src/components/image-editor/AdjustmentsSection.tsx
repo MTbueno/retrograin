@@ -4,14 +4,9 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-// Input might be removed if hex input is no longer there
-// Popover, PopoverContent, PopoverTrigger, Button will be removed if only used for custom color picker
 import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-
-// PRESET_TINT_COLORS is no longer needed
-// const PRESET_TINT_COLORS = [ ... ];
-
+import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider'; // Import the new component
 
 export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
@@ -64,10 +59,10 @@ export function AdjustmentsSection() {
     tonalRange: 'shadows' | 'midtones' | 'highlights',
     color: string
   ) => {
-    // Basic hex color validation from native color picker is usually #rrggbb
+    // Basic hex color validation
     const isValidHex = /^#[0-9A-F]{6}$/i.test(color);
     if (!isValidHex && color !== '') { 
-        console.warn("Invalid hex color:", color); // Should not happen with native picker
+        console.warn("Invalid hex color from spectrum slider:", color); 
         return;
     }
 
@@ -120,14 +115,18 @@ export function AdjustmentsSection() {
         max={control.max}
         step={control.step}
         value={[control.value]}
-        onValueChange={(val) => handleSliderChange(control.id as any, val[0])}
+        onValueChange={(val) => {
+          handleSliderChange(control.id as any, val[0]);
+          if (originalImage) setIsPreviewing(true); // Start preview on value change (drag)
+        }}
         disabled={!originalImage}
-        onPointerDown={() => {
+        onPointerDown={() => { // Kept for completeness, though onValueChange also sets preview
           if (originalImage) setIsPreviewing(true);
         }}
-        onPointerUp={() => {
-          if (originalImage) setIsPreviewing(false);
+        onValueChangeCommit={() => { // Use onValueChangeCommit for final value
+             if (originalImage) setIsPreviewing(false);
         }}
+        // onPointerUp is replaced by onValueChangeCommit for sliders
       />
     </div>
   );
@@ -148,17 +147,23 @@ export function AdjustmentsSection() {
       }, true)}
 
       {intensityValue > 0 && (
-        <div className="flex items-center space-x-2 pl-6"> {/* Adjust pl-6 as needed for alignment */}
-          <Label htmlFor={`tint${tonalRange}ColorInput`} className="text-xs text-muted-foreground shrink-0">
-            Color:
-          </Label>
-          <input
-            type="color"
-            id={`tint${tonalRange}ColorInput`}
-            value={colorValue || '#000000'} // Native picker needs a valid hex; default to black if empty
-            onChange={(e) => handleTintColorChange(tonalRange, e.target.value)}
-            disabled={!originalImage}
-            className="h-7 w-10 p-0.5 border border-input rounded-sm cursor-pointer bg-card" // Basic styling for the color swatch
+        <div className="space-y-1.5 pl-6"> {/* Indent color controls */}
+          <div className="flex items-center space-x-2">
+            <Label htmlFor={`tint${tonalRange}ColorSwatch`} className="text-xs text-muted-foreground shrink-0">
+              Color:
+            </Label>
+            <div 
+              id={`tint${tonalRange}ColorSwatch`}
+              className="h-5 w-5 rounded-sm border border-input shrink-0" 
+              style={{ backgroundColor: colorValue || '#808080' }} // Default to gray if no color
+            />
+          </div>
+          <ColorSpectrumSlider
+            onColorChange={(newColor) => {
+              handleTintColorChange(tonalRange, newColor);
+              if (originalImage) setIsPreviewing(false); // Ensure full render after color pick
+            }}
+            className="h-4" // Adjust height of the spectrum slider itself
           />
         </div>
       )}
