@@ -5,9 +5,9 @@ import { ImageEditorProvider } from '@/contexts/ImageEditorContext';
 import { ImageCanvas } from '@/components/image-editor/ImageCanvas';
 import { ControlPanel } from '@/components/image-editor/ControlPanel';
 import { ImageThumbnailSidebar } from '@/components/image-editor/ImageThumbnailSidebar';
-import { SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { SidebarInset } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { PanelLeftOpen, PanelLeftClose, PanelRightOpen } from 'lucide-react';
+import { PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 
 export default function RetroGrainPage() {
   const [isThumbnailSidebarVisible, setIsThumbnailSidebarVisible] = useState(true);
@@ -33,14 +33,7 @@ export default function RetroGrainPage() {
                 </Button>
               </div>
 
-              <div className="absolute top-4 right-4 z-10">
-                <SidebarTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <PanelRightOpen />
-                    <span className="sr-only">Toggle Controls</span>
-                  </Button>
-                </SidebarTrigger>
-              </div>
+              {/* Removed the SidebarTrigger for the right control panel */}
 
               <div className="flex items-center justify-center w-full h-full">
                 <ImageCanvas />
