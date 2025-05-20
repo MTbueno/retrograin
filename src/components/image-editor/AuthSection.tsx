@@ -30,12 +30,12 @@ export function AuthSection() {
             </AvatarFallback>
           </Avatar>
           <span className="text-sm text-muted-foreground truncate" title={user.displayName || user.email || undefined}>
-            {user.displayName || user.email}
+            Welcome, {user.displayName || user.email}!
           </span>
         </div>
         <Button onClick={signOutUser} variant="outline" className="w-full">
           <LogOut className="mr-2 h-4 w-4" />
-          Logout
+          Sign Out
         </Button>
       </div>
     );
@@ -43,7 +43,7 @@ export function AuthSection() {
 
   return (
     <div className="space-y-2 w-full max-w-[14rem] mx-auto">
-       <p className="text-xs text-muted-foreground text-center mb-2">Sign in to save to Google Drive.</p>
+       <p className="text-xs text-muted-foreground text-center mb-2">Sign in to enable Google Drive features.</p>
       <Button onClick={signInWithGoogle} className="w-full">
         <LogIn className="mr-2 h-4 w-4" />
         Sign In with Google

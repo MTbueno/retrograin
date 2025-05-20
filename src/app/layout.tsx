@@ -4,7 +4,8 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PwaRegistry } from '@/components/PwaRegistry';
-import { AuthProvider } from '@/contexts/AuthContext'; // Added AuthProvider
+import { AuthProvider } from '@/contexts/AuthContext';
+import Script from 'next/script'; // Import Next.js Script component
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -39,10 +40,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AuthProvider> {/* Wrapped AppLayout with AuthProvider */}
+        <AuthProvider>
           <AppLayout>{children}</AppLayout>
         </AuthProvider>
         <PwaRegistry />
+        {/* Add the Google API client library script */}
+        <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
       </body>
     </html>
   );
