@@ -55,7 +55,7 @@ const rgbToHex = (r: number, g: number, b: number): string => {
 };
 
 const desaturateRgb = (rgb: { r: number; g: number; b: number }, saturation: number): { r: number; g: number; b: number } => {
-  const gray = rgb.r * 0.3086 + rgb.g * 0.6094 + rgb.b * 0.0820;
+  const gray = rgb.r * 0.3086 + rgb.g * 0.6094 + rgb.b * 0.0820; // Standard luminance calculation
   return {
     r: Math.round(rgb.r * saturation + gray * (1 - saturation)),
     g: Math.round(rgb.g * saturation + gray * (1 - saturation)),
@@ -77,7 +77,7 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 
 const PREVIEW_SCALE_FACTOR = 0.5; 
 const NOISE_CANVAS_SIZE = 100; 
-const TINT_EFFECT_SCALING_FACTOR = 0.3; 
+const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; // Reduced original scaling factor
 
 export function ImageCanvas() { 
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
@@ -103,6 +103,7 @@ export function ImageCanvas() {
             noiseCtx.putImageData(imageData, 0, 0);
             noiseCanvasRef.current = noiseCv;
 
+            // Ensure pattern is created after main canvas is available
             const mainCanvas = canvasRef.current;
             if (mainCanvas) {
                 const mainCtx = mainCanvas.getContext('2d');
@@ -112,7 +113,7 @@ export function ImageCanvas() {
             }
         }
     }
-  }, [canvasRef]);
+  }, [canvasRef]); // Re-run if canvasRef changes (though it shouldn't often)
 
   const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
@@ -121,7 +122,8 @@ export function ImageCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    if (noiseCanvasRef.current && !noisePatternRef.current) {
+    // Re-create noise pattern if canvas context was recreated or pattern not set
+    if (noiseCanvasRef.current && (!noisePatternRef.current || noisePatternRef.current.canvas?.getContext('2d') !== ctx)) {
         noisePatternRef.current = ctx.createPattern(noiseCanvasRef.current, 'repeat');
     }
 
@@ -131,23 +133,22 @@ export function ImageCanvas() {
     let sWidth = originalImage.naturalWidth / cropZoom;
     let sHeight = originalImage.naturalHeight / cropZoom;
 
-    // Calculate source x, y based on offset and zoom
-    // cropOffsetX/Y range from -1 to 1. 0 is center.
     const maxPanX = originalImage.naturalWidth - sWidth;
     const maxPanY = originalImage.naturalHeight - sHeight;
     
     let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
     let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
 
-    // Clamp sx, sy to be within image bounds
     sx = Math.max(0, Math.min(sx, originalImage.naturalWidth - sWidth));
     sy = Math.max(0, Math.min(sy, originalImage.naturalHeight - sHeight));
-    sWidth = Math.max(1, sWidth); // Ensure width is at least 1
-    sHeight = Math.max(1, sHeight); // Ensure height is at least 1
+    sWidth = Math.max(1, sWidth); 
+    sHeight = Math.max(1, sHeight);
     
+    // These are the dimensions of the content *after* cropping and before 90-degree rotation/flip
     let contentWidth = sWidth;
     let contentHeight = sHeight;
     
+    // Calculate canvas buffer size based on content dimensions and 90-degree rotation/flip
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
       canvasBufferWidth = contentHeight * Math.abs(scaleY);
@@ -157,59 +158,73 @@ export function ImageCanvas() {
       canvasBufferHeight = contentHeight * Math.abs(scaleY);
     }
 
+    // Apply preview scaling factor to the canvas buffer itself
     const currentScaleFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1;
     canvas.width = canvasBufferWidth * currentScaleFactor;
     canvas.height = canvasBufferHeight * currentScaleFactor;
     
-    ctx.save();
+    ctx.save(); // Save the clean context state
     
+    // Move origin to canvas center for rotations/scaling
     ctx.translate(canvas.width / 2, canvas.height / 2);
+
+    // Apply 90-degree rotations
     ctx.rotate((rotation * Math.PI) / 180);
+    
+    // Apply flips
     ctx.scale(scaleX, scaleY);
+
+    // Apply preview scaling factor to drawing operations if in preview mode
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
 
+    // Apply CSS-like filters (brightness, contrast, saturation, etc.)
     applyCssFilters(ctx, settings);
     
+    // Draw the cropped portion of the original image centered in the transformed context
     ctx.drawImage(
-      originalImage, sx, sy, sWidth, sHeight,
-      -contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight
+      originalImage, 
+      sx, sy, sWidth, sHeight, // Source rect from original image
+      -contentWidth / 2, -contentHeight / 2, // Draw centered in the transformed space
+      contentWidth, contentHeight             // Draw at the content's natural (pre-90-deg-rotation) size
     );
-
-    // Visual crop rectangle is no longer needed as crop is part of drawImage source
     
+    // Reset CSS filters for subsequent direct canvas manipulations
     ctx.filter = 'none';
     const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-    if (settings.shadows > 0) {
+    // Apply Shadows (Canvas specific)
+    if (settings.shadows > 0) { // Brighten shadows
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.175; // Adjusted factor (0.35 * 0.5)
+      ctx.globalAlpha = settings.shadows * 0.175 * 0.5; // Adjusted factor further
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.shadows < 0) {
+    } else if (settings.shadows < 0) { // Darken shadows
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.1; // Adjusted factor (0.2 * 0.5)
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.1 * 0.5; // Adjusted factor further
       ctx.fillStyle = 'rgb(50, 50, 50)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over'; 
 
-    if (settings.highlights < 0) {
+    // Apply Highlights (Canvas specific)
+    if (settings.highlights < 0) { // Darken highlights
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.175; // Adjusted factor (0.35 * 0.5)
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.175 * 0.5; // Adjusted factor further
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.highlights > 0) {
+    } else if (settings.highlights > 0) { // Brighten highlights
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.1; // Adjusted factor (0.2 * 0.5)
+      ctx.globalAlpha = settings.highlights * 0.1 * 0.5; // Adjusted factor further
       ctx.fillStyle = 'rgb(200, 200, 200)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over';
 
+    // Apply Color Temperature
     if (settings.colorTemperature !== 0) {
       const temp = settings.colorTemperature / 100; 
       const alpha = Math.abs(temp) * 0.2; 
@@ -223,6 +238,7 @@ export function ImageCanvas() {
       ctx.globalCompositeOperation = 'source-over'; 
     }
 
+    // Apply Tint
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
       if (intensity > 0 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') {
         const rgbColor = hexToRgb(baseColorHex);
@@ -232,21 +248,24 @@ export function ImageCanvas() {
           
           ctx.globalCompositeOperation = blendMode;
           ctx.fillStyle = finalColorHex;
-          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR * 0.6; // Further reduced intensity
+          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR; 
           ctx.fillRect(...rectArgs);
         }
       }
     };
     
+    // Corrected tint application based on user feedback (swapped dodge and burn)
     applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
     applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
         
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over'; 
     
+    // Apply Vignette
     if (settings.vignetteIntensity > 0) {
       const centerX = 0; 
       const centerY = 0;
+      // Vignette radius should be based on the content dimensions before preview scaling
       const radiusX = contentWidth / 2;
       const radiusY = contentHeight / 2;
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
@@ -258,6 +277,7 @@ export function ImageCanvas() {
       ctx.fillRect(...rectArgs);
     }
 
+    // Apply Grain
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
         ctx.save(); 
         ctx.fillStyle = noisePatternRef.current;
@@ -267,8 +287,8 @@ export function ImageCanvas() {
         ctx.restore(); 
     }
 
-    ctx.restore(); 
-  }, [originalImage, settings, canvasRef, isPreviewing]);
+    ctx.restore(); // Restore to the clean state saved at the beginning
+  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]); // Added noisePatternRef
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 200),
@@ -302,8 +322,7 @@ export function ImageCanvas() {
     <canvas
       ref={canvasRef}
       className="max-w-full max-h-full object-contain rounded-md shadow-lg"
+      // Canvas width and height are set dynamically in drawImageImmediately
     />
   );
 }
-
-    

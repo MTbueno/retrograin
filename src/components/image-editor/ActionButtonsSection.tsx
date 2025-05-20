@@ -1,19 +1,22 @@
 
 "use client";
 
-import { useImageEditor } from '@/contexts/ImageEditorContext';
+import { useImageEditor, type ImageObject } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
 import { Download, RotateCcwSquare, Copy, ClipboardPaste } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import JSZip from 'jszip';
 
 const JPEG_QUALITY = 0.92;
 
 export function ActionButtonsSection() {
   const { 
-    originalImage, 
+    originalImage, // This is the active original image
+    allImages, // All loaded image objects
     dispatchSettings, 
-    baseFileName, 
-    getCanvasDataURL, 
+    baseFileName, // Base filename of the active image
+    getCanvasDataURL, // For the active image
+    generateImageDataUrlWithSettings, // For generating any image with its settings
     setIsPreviewing,
     copyActiveSettings,
     pasteSettingsToActiveImage,
@@ -21,19 +24,70 @@ export function ActionButtonsSection() {
   } = useImageEditor();
   const { toast } = useToast();
 
-  const handleDownload = () => {
-    if (!originalImage) {
+  const handleDownload = async () => {
+    if (allImages.length === 0) {
       toast({
         title: 'Error',
-        description: 'No image to download.',
+        description: 'No images to download.',
         variant: 'destructive',
       });
       return;
     }
 
-    setIsPreviewing(false); 
+    setIsPreviewing(false); // Ensure full quality for download
 
-    setTimeout(() => {
+    // Wait for any pending canvas updates
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+
+    if (allImages.length > 1) {
+      // Batch download as ZIP
+      const zip = new JSZip();
+      toast({ title: 'Processing Images...', description: 'Generating ZIP file. Please wait.' });
+
+      try {
+        for (const imgObj of allImages) {
+          const imageDataUrl = await generateImageDataUrlWithSettings(
+            imgObj.imageElement,
+            imgObj.settings,
+            'image/jpeg',
+            JPEG_QUALITY
+          );
+
+          if (imageDataUrl) {
+            const blob = await (await fetch(imageDataUrl)).blob();
+            zip.file(`${imgObj.baseFileName}_retrograin.jpg`, blob);
+          } else {
+            console.error(`Failed to generate image data for ${imgObj.baseFileName}`);
+            toast({
+              title: 'Skipping File',
+              description: `Could not generate ${imgObj.baseFileName} for ZIP.`,
+              variant: 'destructive'
+            });
+          }
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = 'retrograin_edits.zip';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        toast({ title: 'Batch Downloaded!', description: 'All images saved in retrograin_edits.zip' });
+
+      } catch (error) {
+        console.error("Error generating ZIP:", error);
+        toast({
+          title: 'ZIP Generation Failed',
+          description: 'An error occurred while creating the ZIP file.',
+          variant: 'destructive',
+        });
+      }
+
+    } else if (originalImage) {
+      // Single image download
       const mimeType = 'image/jpeg';
       const fileExtension = 'jpg';
       
@@ -57,7 +111,7 @@ export function ActionButtonsSection() {
       link.click();
       document.body.removeChild(link);
       toast({ title: 'Image Downloaded!', description: `Saved as ${downloadFileName}` });
-    }, 50);
+    }
   };
 
   const handleReset = () => {
@@ -88,12 +142,10 @@ export function ActionButtonsSection() {
     toast({ title: 'Settings Pasted!', description: 'Adjustments have been applied to the current image.' });
   };
 
+  const downloadButtonText = allImages.length > 1 ? "Download All (ZIP)" : "Download Image";
+
   return (
     <div className="space-y-3 w-full max-w-[14rem] mx-auto">
-      <Button onClick={handleDownload} disabled={!originalImage} className="w-full" variant="default">
-        <Download className="mr-2 h-4 w-4" />
-        Download Image
-      </Button>
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
         <RotateCcwSquare className="mr-2 h-4 w-4" /> 
         Reset Adjustments
@@ -108,6 +160,10 @@ export function ActionButtonsSection() {
           Paste
         </Button>
       </div>
+      <Button onClick={handleDownload} disabled={allImages.length === 0} className="w-full" variant="default">
+        <Download className="mr-2 h-4 w-4" />
+        {downloadButtonText}
+      </Button>
     </div>
   );
 }
