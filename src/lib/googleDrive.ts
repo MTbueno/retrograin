@@ -42,16 +42,24 @@ export function loadGapi(callback: () => void) {
       } catch (error) {
         console.error("Error initializing Google API client (gapi.client.init):", error);
         let userErrorMessage = "Falha Crítica ao Inicializar a API do Google Drive.\n\n";
-        userErrorMessage += "Verifique ATENTAMENTE os seguintes pontos no seu Google Cloud Console:\n\n";
-        userErrorMessage += "1. A 'Google Drive API' está ATIVADA para o seu projeto.\n\n";
-        userErrorMessage += "2. Sua Chave de API (`NEXT_PUBLIC_GOOGLE_API_KEY` no arquivo .env):\n";
-        userErrorMessage += "   a. Está CORRETA e COPIADA EXATAMENTE do console?\n";
+        userErrorMessage += "A causa MAIS PROVÁVEL é um problema com a sua Chave de API do Google (`NEXT_PUBLIC_GOOGLE_API_KEY`) ou suas configurações no Google Cloud Console.\n\n";
+        userErrorMessage += "VERIFIQUE ATENTAMENTE:\n";
+        userErrorMessage += "1. CHAVE DE API NO ARQUIVO .env:\n";
+        userErrorMessage += "   - A `NEXT_PUBLIC_GOOGLE_API_KEY` no seu arquivo .env está EXATAMENTE CORRETA? Copie e cole novamente do Google Cloud Console para ter certeza.\n";
+        userErrorMessage += "   - Você REINICIOU o servidor de desenvolvimento (npm run dev) após salvar o arquivo .env?\n\n";
+        userErrorMessage += "2. GOOGLE CLOUD CONSOLE (para o projeto da Chave de API):\n";
+        userErrorMessage += "   a. A 'Google Drive API' está ATIVADA?\n";
+        userErrorMessage += "      (Vá em 'APIs e Serviços' > 'APIs e serviços ativados')\n\n";
         userErrorMessage += "   b. **RESTRIÇÕES DA CHAVE DE API:** Este é um ponto MUITO COMUM de erro.\n";
-        userErrorMessage += "      - **Restrições de aplicativo (Referenciadores HTTP):** Se houver, `http://localhost:9002` (para desenvolvimento) e seu domínio de produção (Ex: `https://seu-app.vercel.app`) DEVEM estar incluídos. Para testar, tente configurar como 'Nenhuma'.\n";
-        userErrorMessage += "      - **Restrições de API:** Se houver, 'Google Drive API' DEVE estar na lista de APIs permitidas. Para testar, tente configurar como 'Não restringir chave'.\n";
-        userErrorMessage += "   c. **SUGESTÃO DE TESTE:** Para isolar o problema, tente remover TEMPORARIAMENTE todas as restrições da Chave de API no Google Cloud Console. Se o aplicativo funcionar, o problema está nas configurações de restrição.\n\n";
+        userErrorMessage += "      - **Restrições de aplicativo (Referenciadores HTTP):**\n";
+        userErrorMessage += "         - Se houver restrições, `http://localhost:9002` (para desenvolvimento) e o domínio de produção (Ex: `https://seu-app.vercel.app`) DEVEM estar incluídos.\n";
+        userErrorMessage += "         - **TESTE:** Tente configurar como 'Nenhuma' TEMPORARIAMENTE.\n";
+        userErrorMessage += "      - **Restrições de API:**\n";
+        userErrorMessage += "         - Se houver restrições, 'Google Drive API' DEVE estar na lista de APIs permitidas.\n";
+        userErrorMessage += "         - **TESTE:** Tente configurar como 'Não restringir chave' TEMPORARIAMENTE.\n\n";
+        userErrorMessage += "   c. **SUGESTÃO DE DIAGNÓSTICO:** Para isolar o problema, **REMOVA TEMPORARIAMENTE TODAS as restrições** da Chave de API no Google Cloud Console (referenciadores e de API). Se o aplicativo funcionar, o problema está nas configurações de restrição. Depois, adicione-as de volta cuidadosamente.\n\n";
         userErrorMessage += "Detalhes do erro técnico: " + ((error as Error).message || "Erro desconhecido") + "\n";
-        userErrorMessage += "Consulte o console do navegador para mais detalhes técnicos (pode haver erros de CORS ou 403 relacionados à Chave de API).";
+        userErrorMessage += "Consulte o console do navegador para mais detalhes técnicos (pode haver erros de CORS, 401 ou 403 relacionados à Chave de API).";
         alert(userErrorMessage);
         // driveApiLoaded will remain false, which should prevent further Drive operations.
       }
@@ -67,9 +75,11 @@ export function initTokenClient(callback: (tokenResponse: google.accounts.oauth2
         alert("Configuração Faltando: O ID do Cliente Google (NEXT_PUBLIC_GOOGLE_CLIENT_ID) não foi encontrado no seu arquivo .env. A autenticação com o Google Drive não funcionará.");
         return null;
     }
-    if (!gapiLoaded || !google.accounts || !google.accounts.oauth2) {
-        console.error("Google Identity Services (GIS) not loaded yet. Cannot init token client.");
-        alert("Serviços de Identidade do Google não carregados. Tente novamente ou atualize a página.");
+     if (!gapiLoaded || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+        console.error("Google Identity Services (GIS) not loaded yet or 'google' is undefined. Cannot init token client.");
+        // It's possible gapi loaded but google.accounts.oauth2 isn't ready immediately.
+        // Retrying or delaying might be an advanced option, but for now, we alert.
+        alert("Os Serviços de Identidade do Google (GIS) não parecem estar totalmente carregados. Isso pode ser um problema de carregamento da biblioteca do Google. Tente atualizar a página. Se persistir, verifique a conexão com a internet e o console do navegador para erros de script do Google.");
         return null;
     }
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -91,13 +101,13 @@ export function requestAccessToken() {
 
 export function revokeAccessToken() {
   const token = gapi.client.getToken();
-  if (token !== null && token.access_token) { 
+  if (token !== null && token.access_token && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) { 
     google.accounts.oauth2.revoke(token.access_token, () => {
       console.log('Access token revoked.');
       gapi.client.setToken(null); 
     });
   } else {
-    console.log('No access token to revoke or gapi client token is null.');
+    console.log('No access token to revoke or gapi client token is null, or google.accounts.oauth2 not available.');
   }
 }
 
@@ -131,6 +141,7 @@ export async function ensureRetroGrainFolder(): Promise<string | null> {
         mimeType: 'application/vnd.google-apps.folder',
       };
       const createResponse = await gapi.client.drive.files.create({
+        // @ts-ignore TODO: Fix this type once gapi types are better or use a more specific type
         resource: fileMetadata,
         fields: 'id',
       });
@@ -214,7 +225,9 @@ export async function uploadFileToDrive(
 
 export function isDriveAuthenticated(): boolean {
     const token = gapi.client.getToken();
-    return !!(gapiLoaded && driveApiLoaded && token && token.access_token);
+    // Check if gapi and gapi.client are loaded before trying to access getToken
+    const gapiClientAvailable = typeof gapi !== 'undefined' && typeof gapi.client !== 'undefined';
+    return !!(gapiLoaded && driveApiLoaded && gapiClientAvailable && token && token.access_token);
 }
 
 declare global {
