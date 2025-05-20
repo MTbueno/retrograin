@@ -72,18 +72,16 @@ export function ImageCanvas() {
             noiseCtx.putImageData(imageData, 0, 0);
             noiseCanvasRef.current = noiseCv;
 
-            // Create pattern immediately if main canvas context is available,
-            // otherwise it will be created in drawImageImmediately
-             const mainCanvas = canvasRef.current;
-             if (mainCanvas) {
+            const mainCanvas = canvasRef.current;
+            if (mainCanvas) {
                 const mainCtx = mainCanvas.getContext('2d');
                 if (mainCtx) {
                     noisePatternRef.current = mainCtx.createPattern(noiseCv, 'repeat');
                 }
-             }
+            }
         }
     }
-  }, [canvasRef]); // Re-run if canvasRef changes, though it shouldn't often
+  }, [canvasRef]);
 
   const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
@@ -92,7 +90,6 @@ export function ImageCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Ensure noise pattern is created if it wasn't (e.g. if canvasRef wasn't ready during useEffect)
     if (noiseCanvasRef.current && !noisePatternRef.current) {
         noisePatternRef.current = ctx.createPattern(noiseCanvasRef.current, 'repeat');
     }
@@ -163,19 +160,41 @@ export function ImageCanvas() {
       ctx.globalCompositeOperation = 'source-over'; // Reset
     }
 
-    // 5. Apply Tint
-    if (settings.tintColor && settings.tintIntensity > 0) {
-      ctx.globalCompositeOperation = 'overlay'; // Common blending mode for tint
-      ctx.fillStyle = settings.tintColor;
-      ctx.globalAlpha = settings.tintIntensity;
-      ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+    // 5. Apply Tint (Shadows, Midtones, Highlights)
+    if (settings.tintColor) {
+      const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
+      
+      // Midtones Tint
+      if (settings.tintMidtonesIntensity > 0) {
+        ctx.globalCompositeOperation = 'soft-light';
+        ctx.fillStyle = settings.tintColor;
+        ctx.globalAlpha = settings.tintMidtonesIntensity;
+        ctx.fillRect(...rectArgs);
+      }
+      
+      // Highlights Tint
+      if (settings.tintHighlightsIntensity > 0) {
+        ctx.globalCompositeOperation = 'color-dodge';
+        ctx.fillStyle = settings.tintColor;
+        ctx.globalAlpha = settings.tintHighlightsIntensity;
+        ctx.fillRect(...rectArgs);
+      }
+
+      // Shadows Tint
+      if (settings.tintShadowsIntensity > 0) {
+        ctx.globalCompositeOperation = 'color-burn';
+        ctx.fillStyle = settings.tintColor;
+        ctx.globalAlpha = settings.tintShadowsIntensity;
+        ctx.fillRect(...rectArgs);
+      }
+
       ctx.globalAlpha = 1.0; // Reset alpha
       ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
     }
     
     // 6. Apply Vignette
     if (settings.vignetteIntensity > 0) {
-      const centerX = 0; // Relative to translated center
+      const centerX = 0; 
       const centerY = 0;
       const radiusX = contentWidth / 2;
       const radiusY = contentHeight / 2;

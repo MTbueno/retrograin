@@ -12,7 +12,10 @@ export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
 
   const handleSliderChange = (
-    type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 'hueRotate' | 'vignetteIntensity' | 'grainIntensity' | 'colorTemperature' | 'tintIntensity',
+    type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
+          'hueRotate' | 'vignetteIntensity' | 'grainIntensity' | 
+          'colorTemperature' | 'tintShadowsIntensity' | 
+          'tintMidtonesIntensity' | 'tintHighlightsIntensity',
     value: number
   ) => {
     switch (type) {
@@ -40,8 +43,14 @@ export function AdjustmentsSection() {
       case 'colorTemperature':
         dispatchSettings({ type: 'SET_COLOR_TEMPERATURE', payload: value });
         break;
-      case 'tintIntensity':
-        dispatchSettings({ type: 'SET_TINT_INTENSITY', payload: value });
+      case 'tintShadowsIntensity':
+        dispatchSettings({ type: 'SET_TINT_SHADOWS_INTENSITY', payload: value });
+        break;
+      case 'tintMidtonesIntensity':
+        dispatchSettings({ type: 'SET_TINT_MIDTONES_INTENSITY', payload: value });
+        break;
+      case 'tintHighlightsIntensity':
+        dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value });
         break;
     }
   };
@@ -63,6 +72,12 @@ export function AdjustmentsSection() {
     { id: 'colorTemperature', label: 'Temperature', icon: Thermometer, value: settings.colorTemperature, min: -100, max: 100, step: 1 },
   ];
   
+  const tintAdjustments = [
+    { id: 'tintShadowsIntensity', label: 'Shadows Tint', icon: Paintbrush, value: settings.tintShadowsIntensity, min: 0, max: 1, step: 0.01 },
+    { id: 'tintMidtonesIntensity', label: 'Midtones Tint', icon: Paintbrush, value: settings.tintMidtonesIntensity, min: 0, max: 1, step: 0.01 },
+    { id: 'tintHighlightsIntensity', label: 'Highlights Tint', icon: Paintbrush, value: settings.tintHighlightsIntensity, min: 0, max: 1, step: 0.01 },
+  ];
+
   const effectAdjustments = [
     { id: 'vignetteIntensity', label: 'Vignette', icon: CircleDot, value: settings.vignetteIntensity, min: 0, max: 1, step: 0.01 },
     { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 },
@@ -78,7 +93,7 @@ export function AdjustmentsSection() {
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
-           control.id === 'vignetteIntensity' || control.id === 'grainIntensity' || control.id === 'tintIntensity' ? `${Math.round(control.value * 100)}%` :
+           control.id.includes('Intensity') ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
         </span>
@@ -110,7 +125,8 @@ export function AdjustmentsSection() {
       <Label className="text-sm font-medium block">Colors</Label>
       {colorAdjustments.map(renderSlider)}
       
-      {/* Tint Controls */}
+      <Separator className="my-4" />
+      <Label className="text-sm font-medium block">Tint</Label>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="tintColor" className="flex items-center text-xs text-muted-foreground">
@@ -122,21 +138,14 @@ export function AdjustmentsSection() {
         <Input
           type="color"
           id="tintColor"
-          value={settings.tintColor || '#000000'} // Default to black if empty for picker
+          value={settings.tintColor || '#000000'} 
           onChange={handleTintColorChange}
           disabled={!originalImage}
           className="w-full h-8 p-1 border-input bg-background"
         />
       </div>
-      {renderSlider({
-        id: 'tintIntensity',
-        label: 'Tint Intensity',
-        icon: Paintbrush, // Using Paintbrush again, or could be a different one
-        value: settings.tintIntensity,
-        min: 0,
-        max: 1,
-        step: 0.01
-      })}
+      {tintAdjustments.map(renderSlider)}
+
 
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Effects</Label>

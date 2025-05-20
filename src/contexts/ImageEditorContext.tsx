@@ -14,7 +14,9 @@ export interface ImageSettings {
   grainIntensity: number;    // 0 to 1
   colorTemperature: number;  // -100 (cool) to 100 (warm)
   tintColor: string; // hex color string, e.g., '#FF0000'
-  tintIntensity: number; // 0 to 1
+  tintShadowsIntensity: number; // 0 to 1
+  tintMidtonesIntensity: number; // 0 to 1
+  tintHighlightsIntensity: number; // 0 to 1
   rotation: number;
   scaleX: number;
   scaleY: number;
@@ -31,8 +33,10 @@ export const initialImageSettings: ImageSettings = {
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
-  tintColor: '', // Default to no tint
-  tintIntensity: 0, // Default to no tint intensity
+  tintColor: '', 
+  tintShadowsIntensity: 0,
+  tintMidtonesIntensity: 0,
+  tintHighlightsIntensity: 0,
   rotation: 0,
   scaleX: 1,
   scaleY: 1,
@@ -50,7 +54,9 @@ export type SettingsAction =
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
   | { type: 'SET_TINT_COLOR'; payload: string }
-  | { type: 'SET_TINT_INTENSITY'; payload: number }
+  | { type: 'SET_TINT_SHADOWS_INTENSITY'; payload: number }
+  | { type: 'SET_TINT_MIDTONES_INTENSITY'; payload: number }
+  | { type: 'SET_TINT_HIGHLIGHTS_INTENSITY'; payload: number }
   | { type: 'ROTATE_CW' }
   | { type: 'ROTATE_CCW' }
   | { type: 'FLIP_HORIZONTAL' }
@@ -79,8 +85,12 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, colorTemperature: action.payload };
     case 'SET_TINT_COLOR':
       return { ...state, tintColor: action.payload };
-    case 'SET_TINT_INTENSITY':
-      return { ...state, tintIntensity: action.payload };
+    case 'SET_TINT_SHADOWS_INTENSITY':
+      return { ...state, tintShadowsIntensity: action.payload };
+    case 'SET_TINT_MIDTONES_INTENSITY':
+      return { ...state, tintMidtonesIntensity: action.payload };
+    case 'SET_TINT_HIGHLIGHTS_INTENSITY':
+      return { ...state, tintHighlightsIntensity: action.payload };
     case 'ROTATE_CW':
       return { ...state, rotation: (state.rotation + 90) % 360 };
     case 'ROTATE_CCW':
