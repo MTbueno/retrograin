@@ -172,32 +172,32 @@ export function ImageCanvas() {
     // Shadows (settings.shadows: -1 to 1)
     if (settings.shadows > 0) { // Brighten shadows
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.5; // Max 50% effect
-      ctx.fillStyle = 'rgb(128, 128, 128)'; // Mid-gray for screen to affect dark areas
+      ctx.globalAlpha = settings.shadows * 0.35; // Reduced further
+      ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
     } else if (settings.shadows < 0) { // Darken shadows
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.3; // Max 30% effect
-      ctx.fillStyle = 'rgb(50, 50, 50)'; // Dark gray for multiply
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.2; // Reduced further
+      ctx.fillStyle = 'rgb(50, 50, 50)'; 
       ctx.fillRect(...rectArgs);
     }
-    ctx.globalAlpha = 1.0; // Reset alpha
-    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+    ctx.globalAlpha = 1.0; 
+    ctx.globalCompositeOperation = 'source-over'; 
 
     // Highlights (settings.highlights: -1 to 1)
     if (settings.highlights < 0) { // Darken/recover highlights
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.5; // Max 50% effect
-      ctx.fillStyle = 'rgb(128, 128, 128)'; // Mid-gray to pull down highlights
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.35; // Reduced further
+      ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
     } else if (settings.highlights > 0) { // Brighten highlights
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.3; // Max 30% effect
-      ctx.fillStyle = 'rgb(200, 200, 200)'; // Light gray
+      ctx.globalAlpha = settings.highlights * 0.2; // Reduced further
+      ctx.fillStyle = 'rgb(200, 200, 200)'; 
       ctx.fillRect(...rectArgs);
     }
-    ctx.globalAlpha = 1.0; // Reset alpha
-    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+    ctx.globalAlpha = 1.0; 
+    ctx.globalCompositeOperation = 'source-over';
 
 
     // 5. Apply Color Temperature
@@ -295,3 +295,4 @@ export function ImageCanvas() {
     />
   );
 }
+
