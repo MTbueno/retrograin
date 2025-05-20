@@ -44,8 +44,15 @@ export default function RootLayout({
           <AppLayout>{children}</AppLayout>
         </AuthProvider>
         <PwaRegistry />
-        {/* Add the Google API client library script for gapi */}
+        {/* Google API client library script for gapi (Drive API operations) */}
         <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
+        {/* Google Identity Services (GIS) client script for OAuth2 tokens */}
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+          async
+          defer
+        />
       </body>
     </html>
   );
