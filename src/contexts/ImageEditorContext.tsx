@@ -10,13 +10,15 @@ export interface ImageSettings {
   saturation: number;
   exposure: number;
   hueRotate: number;
-  vignetteIntensity: number; // 0 to 1
-  grainIntensity: number;    // 0 to 1
-  colorTemperature: number;  // -100 (cool) to 100 (warm)
-  tintColor: string; // hex color string, e.g., '#FF0000'
-  tintShadowsIntensity: number; // 0 to 1
-  tintMidtonesIntensity: number; // 0 to 1
-  tintHighlightsIntensity: number; // 0 to 1
+  vignetteIntensity: number;
+  grainIntensity: number;
+  colorTemperature: number;
+  tintShadowsColor: string;
+  tintShadowsIntensity: number;
+  tintMidtonesColor: string;
+  tintMidtonesIntensity: number;
+  tintHighlightsColor: string;
+  tintHighlightsIntensity: number;
   rotation: number;
   scaleX: number;
   scaleY: number;
@@ -33,9 +35,11 @@ export const initialImageSettings: ImageSettings = {
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
-  tintColor: '', 
+  tintShadowsColor: '',
   tintShadowsIntensity: 0,
+  tintMidtonesColor: '',
   tintMidtonesIntensity: 0,
+  tintHighlightsColor: '',
   tintHighlightsIntensity: 0,
   rotation: 0,
   scaleX: 1,
@@ -53,9 +57,11 @@ export type SettingsAction =
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
-  | { type: 'SET_TINT_COLOR'; payload: string }
+  | { type: 'SET_TINT_SHADOWS_COLOR'; payload: string }
   | { type: 'SET_TINT_SHADOWS_INTENSITY'; payload: number }
+  | { type: 'SET_TINT_MIDTONES_COLOR'; payload: string }
   | { type: 'SET_TINT_MIDTONES_INTENSITY'; payload: number }
+  | { type: 'SET_TINT_HIGHLIGHTS_COLOR'; payload: string }
   | { type: 'SET_TINT_HIGHLIGHTS_INTENSITY'; payload: number }
   | { type: 'ROTATE_CW' }
   | { type: 'ROTATE_CCW' }
@@ -83,12 +89,16 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, grainIntensity: action.payload };
     case 'SET_COLOR_TEMPERATURE':
       return { ...state, colorTemperature: action.payload };
-    case 'SET_TINT_COLOR':
-      return { ...state, tintColor: action.payload };
+    case 'SET_TINT_SHADOWS_COLOR':
+      return { ...state, tintShadowsColor: action.payload };
     case 'SET_TINT_SHADOWS_INTENSITY':
       return { ...state, tintShadowsIntensity: action.payload };
+    case 'SET_TINT_MIDTONES_COLOR':
+      return { ...state, tintMidtonesColor: action.payload };
     case 'SET_TINT_MIDTONES_INTENSITY':
       return { ...state, tintMidtonesIntensity: action.payload };
+    case 'SET_TINT_HIGHLIGHTS_COLOR':
+      return { ...state, tintHighlightsColor: action.payload };
     case 'SET_TINT_HIGHLIGHTS_INTENSITY':
       return { ...state, tintHighlightsIntensity: action.payload };
     case 'ROTATE_CW':

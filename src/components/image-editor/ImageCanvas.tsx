@@ -161,36 +161,34 @@ export function ImageCanvas() {
     }
 
     // 5. Apply Tint (Shadows, Midtones, Highlights)
-    if (settings.tintColor) {
-      const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
-      
-      // Midtones Tint
-      if (settings.tintMidtonesIntensity > 0) {
-        ctx.globalCompositeOperation = 'soft-light';
-        ctx.fillStyle = settings.tintColor;
-        ctx.globalAlpha = settings.tintMidtonesIntensity;
-        ctx.fillRect(...rectArgs);
-      }
-      
-      // Highlights Tint
-      if (settings.tintHighlightsIntensity > 0) {
-        ctx.globalCompositeOperation = 'color-dodge';
-        ctx.fillStyle = settings.tintColor;
-        ctx.globalAlpha = settings.tintHighlightsIntensity;
-        ctx.fillRect(...rectArgs);
-      }
+    const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-      // Shadows Tint
-      if (settings.tintShadowsIntensity > 0) {
-        ctx.globalCompositeOperation = 'color-burn';
-        ctx.fillStyle = settings.tintColor;
-        ctx.globalAlpha = settings.tintShadowsIntensity;
-        ctx.fillRect(...rectArgs);
-      }
-
-      ctx.globalAlpha = 1.0; // Reset alpha
-      ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+    // Midtones Tint
+    if (settings.tintMidtonesIntensity > 0 && settings.tintMidtonesColor) {
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = settings.tintMidtonesColor;
+      ctx.globalAlpha = settings.tintMidtonesIntensity;
+      ctx.fillRect(...rectArgs);
     }
+    
+    // Highlights Tint
+    if (settings.tintHighlightsIntensity > 0 && settings.tintHighlightsColor) {
+      ctx.globalCompositeOperation = 'color-dodge';
+      ctx.fillStyle = settings.tintHighlightsColor;
+      ctx.globalAlpha = settings.tintHighlightsIntensity;
+      ctx.fillRect(...rectArgs);
+    }
+
+    // Shadows Tint
+    if (settings.tintShadowsIntensity > 0 && settings.tintShadowsColor) {
+      ctx.globalCompositeOperation = 'color-burn';
+      ctx.fillStyle = settings.tintShadowsColor;
+      ctx.globalAlpha = settings.tintShadowsIntensity;
+      ctx.fillRect(...rectArgs);
+    }
+
+    ctx.globalAlpha = 1.0; // Reset alpha
+    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
     
     // 6. Apply Vignette
     if (settings.vignetteIntensity > 0) {

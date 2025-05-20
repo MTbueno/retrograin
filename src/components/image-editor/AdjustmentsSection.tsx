@@ -55,10 +55,20 @@ export function AdjustmentsSection() {
     }
   };
 
-  const handleTintColorChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    dispatchSettings({ type: 'SET_TINT_COLOR', payload: event.target.value });
-     setIsPreviewing(false); // Ensure full render after color pick
+  const handleTintColorChange = (
+    tonalRange: 'shadows' | 'midtones' | 'highlights',
+    color: string
+  ) => {
+    if (tonalRange === 'shadows') {
+      dispatchSettings({ type: 'SET_TINT_SHADOWS_COLOR', payload: color });
+    } else if (tonalRange === 'midtones') {
+      dispatchSettings({ type: 'SET_TINT_MIDTONES_COLOR', payload: color });
+    } else if (tonalRange === 'highlights') {
+      dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
+    }
+    setIsPreviewing(false); // Ensure full render after color pick
   };
+  
 
   const generalAdjustments = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
@@ -72,28 +82,22 @@ export function AdjustmentsSection() {
     { id: 'colorTemperature', label: 'Temperature', icon: Thermometer, value: settings.colorTemperature, min: -100, max: 100, step: 1 },
   ];
   
-  const tintAdjustments = [
-    { id: 'tintShadowsIntensity', label: 'Shadows Tint', icon: Paintbrush, value: settings.tintShadowsIntensity, min: 0, max: 1, step: 0.01 },
-    { id: 'tintMidtonesIntensity', label: 'Midtones Tint', icon: Paintbrush, value: settings.tintMidtonesIntensity, min: 0, max: 1, step: 0.01 },
-    { id: 'tintHighlightsIntensity', label: 'Highlights Tint', icon: Paintbrush, value: settings.tintHighlightsIntensity, min: 0, max: 1, step: 0.01 },
-  ];
-
   const effectAdjustments = [
     { id: 'vignetteIntensity', label: 'Vignette', icon: CircleDot, value: settings.vignetteIntensity, min: 0, max: 1, step: 0.01 },
     { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 },
   ];
 
-  const renderSlider = (control: any) => (
+  const renderSlider = (control: any, isIntensitySlider: boolean = false) => (
     <div key={control.id} className="space-y-2">
       <div className="flex items-center justify-between">
         <Label htmlFor={control.id} className="flex items-center text-xs text-muted-foreground">
-          <control.icon className="mr-2 h-4 w-4" />
+          {control.icon && <control.icon className="mr-2 h-4 w-4" />}
           {control.label}
         </Label>
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
-           control.id.includes('Intensity') ? `${Math.round(control.value * 100)}%` :
+           isIntensitySlider || control.id.includes('Intensity') ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
         </span>
@@ -116,40 +120,58 @@ export function AdjustmentsSection() {
     </div>
   );
 
+  const renderTintControl = (
+    tonalRange: 'shadows' | 'midtones' | 'highlights',
+    label: string,
+    colorValue: string,
+    intensityValue: number
+  ) => (
+    <div key={tonalRange} className="space-y-3">
+      {renderSlider({
+        id: `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Intensity` as any,
+        label: `${label} Tint`,
+        icon: Paintbrush, // Use one icon for all tint intensity sliders for consistency
+        value: intensityValue,
+        min: 0, max: 1, step: 0.01
+      }, true)}
+
+      {intensityValue > 0 && (
+        <div className="space-y-1 pl-1">
+          <Label htmlFor={`tint${tonalRange}Color`} className="text-xs text-muted-foreground">
+            {label} Color
+          </Label>
+          <Input
+            type="color"
+            id={`tint${tonalRange}Color`}
+            value={colorValue || '#000000'} 
+            onChange={(e) => handleTintColorChange(tonalRange, e.target.value)}
+            disabled={!originalImage}
+            className="w-full h-8 p-1 border-input bg-background"
+          />
+        </div>
+      )}
+    </div>
+  );
+
+
   return (
     <div className="space-y-4 w-full max-w-[14rem] mx-auto">
       <Label className="text-sm font-medium block mb-2">Adjustments</Label>
-      {generalAdjustments.map(renderSlider)}
+      {generalAdjustments.map(control => renderSlider(control))}
 
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Colors</Label>
-      {colorAdjustments.map(renderSlider)}
+      {colorAdjustments.map(control => renderSlider(control))}
       
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Tint</Label>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="tintColor" className="flex items-center text-xs text-muted-foreground">
-            <Paintbrush className="mr-2 h-4 w-4" />
-            Tint Color
-          </Label>
-           <span className="text-xs text-muted-foreground uppercase">{settings.tintColor || 'None'}</span>
-        </div>
-        <Input
-          type="color"
-          id="tintColor"
-          value={settings.tintColor || '#000000'} 
-          onChange={handleTintColorChange}
-          disabled={!originalImage}
-          className="w-full h-8 p-1 border-input bg-background"
-        />
-      </div>
-      {tintAdjustments.map(renderSlider)}
-
+      {renderTintControl('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity)}
+      {renderTintControl('midtones', 'Midtones', settings.tintMidtonesColor, settings.tintMidtonesIntensity)}
+      {renderTintControl('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity)}
 
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Effects</Label>
-      {effectAdjustments.map(renderSlider)}
+      {effectAdjustments.map(control => renderSlider(control))}
     </div>
   );
 }
