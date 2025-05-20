@@ -3,13 +3,22 @@
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
-import { Download, RotateCcwSquare } from 'lucide-react'; // Changed to RotateCcwSquare
+import { Download, RotateCcwSquare, Copy, ClipboardPaste } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const JPEG_QUALITY = 0.92;
 
 export function ActionButtonsSection() {
-  const { originalImage, dispatchSettings, baseFileName, getCanvasDataURL, setIsPreviewing } = useImageEditor();
+  const { 
+    originalImage, 
+    dispatchSettings, 
+    baseFileName, 
+    getCanvasDataURL, 
+    setIsPreviewing,
+    copyActiveSettings,
+    pasteSettingsToActiveImage,
+    copiedSettings
+  } = useImageEditor();
   const { toast } = useToast();
 
   const handleDownload = () => {
@@ -22,10 +31,8 @@ export function ActionButtonsSection() {
       return;
     }
 
-    // Ensure we are not in preview mode for final quality download
     setIsPreviewing(false); 
 
-    // Allow a brief moment for canvas to re-render at full quality if it was previewing
     setTimeout(() => {
       const mimeType = 'image/jpeg';
       const fileExtension = 'jpg';
@@ -50,13 +57,35 @@ export function ActionButtonsSection() {
       link.click();
       document.body.removeChild(link);
       toast({ title: 'Image Downloaded!', description: `Saved as ${downloadFileName}` });
-    }, 50); // Small delay to ensure full quality render if needed
+    }, 50);
   };
 
   const handleReset = () => {
     if (!originalImage) return;
     dispatchSettings({ type: 'RESET_SETTINGS' });
-    toast({ title: 'Settings Reset', description: 'All adjustments have been reset to default.' });
+    toast({ title: 'Settings Reset', description: 'All adjustments have been reset to default for the current image.' });
+  };
+
+  const handleCopySettings = () => {
+    if (!originalImage) {
+      toast({ title: 'No Image', description: 'Upload an image to copy its settings.', variant: 'default' });
+      return;
+    }
+    copyActiveSettings();
+    toast({ title: 'Settings Copied!', description: 'Current image adjustments are ready to be pasted.' });
+  };
+
+  const handlePasteSettings = () => {
+    if (!originalImage) {
+      toast({ title: 'No Image', description: 'Select an image to paste settings to.', variant: 'default' });
+      return;
+    }
+    if (!copiedSettings) {
+      toast({ title: 'No Settings Copied', description: 'Copy settings from another image first.', variant: 'default' });
+      return;
+    }
+    pasteSettingsToActiveImage();
+    toast({ title: 'Settings Pasted!', description: 'Adjustments have been applied to the current image.' });
   };
 
   return (
@@ -69,6 +98,16 @@ export function ActionButtonsSection() {
         <RotateCcwSquare className="mr-2 h-4 w-4" /> 
         Reset Adjustments
       </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button onClick={handleCopySettings} disabled={!originalImage} variant="outline" className="w-full">
+          <Copy className="mr-2 h-4 w-4" />
+          Copy
+        </Button>
+        <Button onClick={handlePasteSettings} disabled={!originalImage || !copiedSettings} variant="outline" className="w-full">
+          <ClipboardPaste className="mr-2 h-4 w-4" />
+          Paste
+        </Button>
+      </div>
     </div>
   );
 }
