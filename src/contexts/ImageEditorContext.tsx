@@ -39,8 +39,7 @@ export type SettingsAction =
   | { type: 'FLIP_VERTICAL' }
   | { type: 'SET_CROP'; payload: ImageSettings['crop'] }
   | { type: 'APPLY_FILTER'; payload: string | null }
-  | { type: 'RESET_SETTINGS' }
-  | { type: 'APPLY_AI_SUGGESTIONS'; payload: Partial<ImageSettings> };
+  | { type: 'RESET_SETTINGS' };
 
 function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSettings {
   switch (action.type) {
@@ -69,8 +68,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
       return initialImageSettings;
-    case 'APPLY_AI_SUGGESTIONS':
-      return { ...state, ...action.payload };
     default:
       return state;
   }
@@ -79,17 +76,14 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
 interface ImageEditorContextType {
   originalImage: HTMLImageElement | null;
   setOriginalImage: (image: HTMLImageElement | null) => void;
-  // processedImageURI remains for potential internal use, but download/AI will use getCanvasDataURL
-  processedImageURI: string | null; 
+  processedImageURI: string | null;
   setProcessedImageURI: (uri: string | null) => void;
   settings: ImageSettings;
   dispatchSettings: Dispatch<SettingsAction>;
-  isLoadingAi: boolean;
-  setIsLoadingAi: (loading: boolean) => void;
-  baseFileName: string; // Changed from fileName
-  setBaseFileName: (name: string) => void; // Changed from setFileName
+  baseFileName: string;
+  setBaseFileName: (name: string) => void;
   canvasRef: RefObject<HTMLCanvasElement>;
-  getCanvasDataURL: (type?: string, quality?: number) => string | null; // Updated signature
+  getCanvasDataURL: (type?: string, quality?: number) => string | null;
   isPreviewing: boolean;
   setIsPreviewing: (isPreviewing: boolean) => void;
 }
@@ -100,21 +94,16 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [originalImage, setOriginalImage] = useState<HTMLImageElement | null>(null);
   const [processedImageURI, setProcessedImageURI] = useState<string | null>(null);
   const [settings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
-  const [isLoadingAi, setIsLoadingAi] = useState(false);
-  const [baseFileName, setBaseFileName] = useState<string>('retrograin_image'); // Default base name
+  const [baseFileName, setBaseFileName] = useState<string>('retrograin_image');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
 
-  const getCanvasDataURL = useCallback((type: string = 'image/png', quality?: number) => {
+  const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality?: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
-    // Ensure final render quality before getting data URL if isPreviewing was true
-    // This check is more of a safeguard; ideally isPreviewing is false when this is called for download/AI.
     if (isPreviewing) {
       console.warn("getCanvasDataURL called while isPreviewing is true. Forcing a high-quality render for data URL generation.");
-      // Potentially force a synchronous redraw at full quality if truly needed here,
-      // though current design expects isPreviewing to be false for critical calls.
     }
     return canvas.toDataURL(type, quality);
   }, [isPreviewing, canvasRef]);
@@ -129,12 +118,10 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         setProcessedImageURI,
         settings,
         dispatchSettings,
-        isLoadingAi,
-        setIsLoadingAi,
-        baseFileName, // Updated
-        setBaseFileName, // Updated
+        baseFileName,
+        setBaseFileName,
         canvasRef,
-        getCanvasDataURL, // Updated
+        getCanvasDataURL,
         isPreviewing,
         setIsPreviewing,
       }}

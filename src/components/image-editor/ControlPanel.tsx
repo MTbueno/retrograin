@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -12,7 +13,6 @@ import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
 import { FiltersSection } from './FiltersSection';
-import { AiEnhanceSection } from './AiEnhanceSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -32,8 +32,6 @@ export function ControlPanel() {
             <TransformsSection />
             <SidebarSeparator />
             <FiltersSection />
-            <SidebarSeparator />
-            <AiEnhanceSection />
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
