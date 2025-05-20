@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
@@ -26,10 +27,10 @@ export function AdjustmentsSection() {
   };
 
   const adjustmentControls = [
-    { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0, max: 2, step: 0.01 },
-    { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0, max: 2, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 },
-    { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -1, max: 1, step: 0.01 },
+    { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
+    { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0.5, max: 1.5, step: 0.01 },
+    { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
   ];
 
   return (
