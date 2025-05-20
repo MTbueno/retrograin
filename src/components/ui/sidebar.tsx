@@ -22,8 +22,8 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
+const SIDEBAR_WIDTH = "20rem" // Increased from 16rem
+const SIDEBAR_WIDTH_MOBILE = "22rem" // Increased from 18rem
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
@@ -277,10 +277,9 @@ const SidebarTrigger = React.forwardRef<
         onClick?.(event);
         toggleSidebar();
       }}
-      asChild={asChild}
-      {...props}
+      {...props} // Removed asChild from here temporarily to ensure only one child if asChild is true
     >
-      {asChild && children ? children : (
+      {asChild && children ? children : ( // Conditional rendering based on asChild
         <>
           <PanelLeft />
           <span className="sr-only">Toggle Sidebar</span>
@@ -768,4 +767,3 @@ export {
   SidebarTrigger,
   useSidebar,
 }
-

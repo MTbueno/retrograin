@@ -60,10 +60,10 @@ export function ActionButtonsSection() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 w-full max-w-[14rem] mx-auto">
       <Button onClick={handleDownload} disabled={!originalImage} className="w-full" variant="default">
         <Download className="mr-2 h-4 w-4" />
-        Download Image (JPEG)
+        Download Image
       </Button>
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
         <ResetIcon className="mr-2 h-4 w-4" />

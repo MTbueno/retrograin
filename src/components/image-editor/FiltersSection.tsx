@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
@@ -20,7 +21,7 @@ export function FiltersSection() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 w-full max-w-[14rem] mx-auto">
       <Label className="text-sm font-medium block mb-2">Preset Filters</Label>
       <div className="grid grid-cols-2 gap-2">
         {presetFilters.map(filter => (

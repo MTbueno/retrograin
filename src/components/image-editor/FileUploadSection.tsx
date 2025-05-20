@@ -102,7 +102,7 @@ export function FileUploadSection() {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 w-full max-w-[14rem] mx-auto">
       <Label className="text-sm font-medium">Upload Image</Label>
       <input
         type="file"

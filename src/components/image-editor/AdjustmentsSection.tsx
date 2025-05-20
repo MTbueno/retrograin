@@ -34,7 +34,7 @@ export function AdjustmentsSection() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-[14rem] mx-auto">
       <Label className="text-sm font-medium block mb-2">Adjustments</Label>
       {adjustmentControls.map(control => (
         <div key={control.id} className="space-y-2">

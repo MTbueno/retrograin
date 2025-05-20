@@ -20,7 +20,7 @@ export function ControlPanel() {
   return (
     <Sidebar side="right" variant="sidebar" collapsible="icon" className="border-l">
       <SidebarHeader className="p-4 border-b">
-        <h2 className="text-xl font-semibold">RetroGrain Editor</h2>
+        <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
       </SidebarHeader>
       <SidebarContent asChild>
         <ScrollArea className="h-full">
