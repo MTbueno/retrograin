@@ -46,6 +46,7 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 
 const PREVIEW_SCALE_FACTOR = 0.5; 
 const NOISE_CANVAS_SIZE = 100; // Size of the noise texture
+const TINT_EFFECT_SCALING_FACTOR = 0.6; // Factor to further reduce tint intensity
 
 export function ImageCanvas() { 
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
@@ -167,7 +168,7 @@ export function ImageCanvas() {
     if (settings.tintShadowsIntensity > 0 && settings.tintShadowsColor) {
       ctx.globalCompositeOperation = 'color-burn';
       ctx.fillStyle = settings.tintShadowsColor;
-      ctx.globalAlpha = settings.tintShadowsIntensity;
+      ctx.globalAlpha = settings.tintShadowsIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
     
@@ -175,7 +176,7 @@ export function ImageCanvas() {
     if (settings.tintMidtonesIntensity > 0 && settings.tintMidtonesColor) {
       ctx.globalCompositeOperation = 'soft-light';
       ctx.fillStyle = settings.tintMidtonesColor;
-      ctx.globalAlpha = settings.tintMidtonesIntensity;
+      ctx.globalAlpha = settings.tintMidtonesIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
     
@@ -183,7 +184,7 @@ export function ImageCanvas() {
     if (settings.tintHighlightsIntensity > 0 && settings.tintHighlightsColor) {
       ctx.globalCompositeOperation = 'color-dodge';
       ctx.fillStyle = settings.tintHighlightsColor;
-      ctx.globalAlpha = settings.tintHighlightsIntensity;
+      ctx.globalAlpha = settings.tintHighlightsIntensity * TINT_EFFECT_SCALING_FACTOR;
       ctx.fillRect(...rectArgs);
     }
 
