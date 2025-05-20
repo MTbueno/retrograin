@@ -1,7 +1,8 @@
+
 "use client";
 
 import type { RefObject } from 'react';
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
 
@@ -32,11 +33,25 @@ const applyCanvasAdjustments = (
   ctx.filter = filterString.trim();
 };
 
+// Debounce helper function
+function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  return (...args: Parameters<F>): void => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, waitFor);
+  };
+}
+
 
 export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElement> }) {
   const { originalImage, settings, setProcessedImageURI } = useImageEditor();
 
-  const drawImage = useCallback(() => {
+  const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !originalImage) return;
 
@@ -95,9 +110,22 @@ export function ImageCanvas({ canvasRef }: { canvasRef: RefObject<HTMLCanvasElem
 
   }, [originalImage, settings, canvasRef, setProcessedImageURI]);
 
+  const debouncedDrawImage = useMemo(
+    () => debounce(drawImageImmediately, 200), // Debounce by 200ms
+    [drawImageImmediately]
+  );
+
   useEffect(() => {
-    drawImage();
-  }, [drawImage, originalImage, settings]);
+    if (originalImage) {
+      // Initial draw without debounce, or if you prefer, always debounce
+      // For settings changes, debouncedDrawImage will be called.
+      // If it's the first load of an image, perhaps draw immediately.
+      // However, `settings` changes will trigger debouncedDraw.
+      // A simple approach is to always use the debounced version.
+      debouncedDrawImage();
+    }
+  }, [originalImage, settings, debouncedDrawImage]);
+
 
   if (!originalImage) {
     return (
