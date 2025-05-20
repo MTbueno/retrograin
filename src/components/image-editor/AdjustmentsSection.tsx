@@ -165,8 +165,8 @@ export function AdjustmentsSection() {
       }, true)}
 
       {intensityValue > 0 && (
-        <div className="flex items-center space-x-2 pl-1">
-          <Label htmlFor={`tint${tonalRange}ColorTrigger`} className="text-xs text-muted-foreground">
+        <div className="flex items-center space-x-2">
+          <Label htmlFor={`tint${tonalRange}ColorTrigger`} className="text-xs text-muted-foreground shrink-0">
             Color:
           </Label>
           <Popover>
@@ -175,7 +175,7 @@ export function AdjustmentsSection() {
                 id={`tint${tonalRange}ColorTrigger`}
                 variant="outline"
                 size="icon"
-                className="h-6 w-6 p-0 border-input rounded-sm"
+                className="h-6 w-6 p-0 border-input rounded-sm shrink-0"
                 style={{ backgroundColor: colorValue || 'transparent' }}
                 aria-label={`Select ${label} tint color`}
                 disabled={!originalImage}
@@ -184,7 +184,7 @@ export function AdjustmentsSection() {
             <PopoverContent 
               className="p-2 w-56 bg-popover/90 backdrop-blur-sm border-popover-foreground/30 shadow-xl rounded-md"
               side="bottom"
-              align="start"
+              align="center" 
             >
               <div className="space-y-3">
                 <div>
@@ -247,4 +247,3 @@ export function AdjustmentsSection() {
     </div>
   );
 }
-
