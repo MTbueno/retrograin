@@ -44,7 +44,7 @@ export default function RootLayout({
           <AppLayout>{children}</AppLayout>
         </AuthProvider>
         <PwaRegistry />
-        {/* Add the Google API client library script */}
+        {/* Add the Google API client library script for gapi */}
         <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
       </body>
     </html>

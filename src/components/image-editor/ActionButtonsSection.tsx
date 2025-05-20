@@ -45,7 +45,7 @@ export function ActionButtonsSection() {
     if (tokenResponse && tokenResponse.access_token) {
       gapi.client.setToken({ access_token: tokenResponse.access_token });
       setIsDriveAuthorized(true);
-      toast({ title: 'Google Drive Connected!', description: 'You can now save images to Drive.' });
+      toast({ title: 'Google Drive Conectado!', description: 'Agora você pode salvar imagens no Drive.' });
       // Automatically try to save if an action was pending
       if (isSavingToDrive) { 
         // This logic might need refinement if saveToDrive was called before token response
@@ -53,9 +53,9 @@ export function ActionButtonsSection() {
       }
     } else {
       setIsDriveAuthorized(false);
-      console.error("Failed to get access token or tokenResponse error:", tokenResponse);
-      const errorMessage = (tokenResponse as any)?.error_description || "Failed to connect to Google Drive.";
-      toast({ title: 'Drive Connection Failed', description: errorMessage, variant: 'destructive' });
+      console.error("Falha ao obter token de acesso ou erro na tokenResponse:", tokenResponse);
+      const errorMessage = (tokenResponse as any)?.error_description || "Falha ao conectar ao Google Drive.";
+      toast({ title: 'Falha na Conexão com Drive', description: errorMessage, variant: 'destructive' });
     }
   }, [toast, isSavingToDrive]);
 
@@ -84,8 +84,8 @@ export function ActionButtonsSection() {
   const handleDownload = async () => {
     if (allImages.length === 0) {
       toast({
-        title: 'Error',
-        description: 'No images to download.',
+        title: 'Erro',
+        description: 'Nenhuma imagem para baixar.',
         variant: 'destructive',
       });
       return;
@@ -95,7 +95,7 @@ export function ActionButtonsSection() {
 
     if (allImages.length > 1) {
       const zip = new JSZip();
-      toast({ title: 'Processing Images...', description: 'Generating ZIP file. Please wait.' });
+      toast({ title: 'Processando Imagens...', description: 'Gerando arquivo ZIP. Por favor, aguarde.' });
       try {
         for (const imgObj of allImages) {
           const imageDataUrl = await generateImageDataUrlWithSettings(
@@ -109,8 +109,8 @@ export function ActionButtonsSection() {
             zip.file(`${imgObj.baseFileName}_retrograin.jpg`, blob);
           } else {
             toast({
-              title: 'Skipping File',
-              description: `Could not generate ${imgObj.baseFileName} for ZIP.`,
+              title: 'Pulando Arquivo',
+              description: `Não foi possível gerar ${imgObj.baseFileName} para o ZIP.`,
               variant: 'destructive'
             });
           }
@@ -123,12 +123,12 @@ export function ActionButtonsSection() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
-        toast({ title: 'Batch Downloaded!', description: 'All images saved in retrograin_edits.zip' });
+        toast({ title: 'Download em Lote Concluído!', description: 'Todas as imagens salvas em retrograin_edits.zip' });
       } catch (error) {
-        console.error("Error generating ZIP:", error);
+        console.error("Erro ao gerar ZIP:", error);
         toast({
-          title: 'ZIP Generation Failed',
-          description: 'An error occurred while creating the ZIP file.',
+          title: 'Falha na Geração do ZIP',
+          description: 'Ocorreu um erro ao criar o arquivo ZIP.',
           variant: 'destructive',
         });
       }
@@ -138,8 +138,8 @@ export function ActionButtonsSection() {
       const currentImageURI = getCanvasDataURL(mimeType, JPEG_QUALITY);
       if (!currentImageURI) {
         toast({
-          title: 'Error',
-          description: 'Could not generate image for download.',
+          title: 'Erro',
+          description: 'Não foi possível gerar a imagem para download.',
           variant: 'destructive',
         });
         return;
@@ -151,59 +151,59 @@ export function ActionButtonsSection() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast({ title: 'Image Downloaded!', description: `Saved as ${downloadFileName}` });
+      toast({ title: 'Imagem Baixada!', description: `Salva como ${downloadFileName}` });
     }
   };
 
   const handleSaveToDrive = async () => {
     if (!firebaseUser) {
-      toast({ title: 'Not Logged In', description: 'Please sign in to save to Google Drive.', variant: 'default' });
+      toast({ title: 'Não Logado', description: 'Por favor, faça login para salvar no Google Drive.', variant: 'default' });
       return;
     }
     if (!originalImage) {
-      toast({ title: 'No Image', description: 'Please upload and edit an image to save.', variant: 'default' });
+      toast({ title: 'Nenhuma Imagem', description: 'Por favor, carregue e edite uma imagem para salvar.', variant: 'default' });
       return;
     }
 
     setIsSavingToDrive(true);
 
     if (!isGapiLoaded) {
-        toast({ title: 'Google API not loaded', description: 'Please wait a moment and try again.', variant: 'default' });
+        toast({ title: 'API do Google não carregada', description: 'Por favor, aguarde um momento e tente novamente.', variant: 'default' });
         setIsSavingToDrive(false);
         return;
     }
     
     if (!isDriveAuthenticated()) {
-      toast({ title: 'Authorization Required', description: 'Please authorize access to Google Drive.', variant: 'default' });
-      requestAccessToken(); // This will trigger the GIS popup
-      // The actual save will happen in the token client callback or require another click
-      // For now, we set isSavingToDrive to false, user might need to click again after auth.
-      // A more sophisticated flow could queue the action.
-      // setIsSavingToDrive(false); // Or keep it true and handle in callback. Let's keep true.
-      return; // Wait for token callback
+      toast({ title: 'Autorização Necessária', description: 'Por favor, autorize o acesso ao Google Drive.', variant: 'default' });
+      requestAccessToken(); // Isso acionará o pop-up do GIS
+      // O salvamento real acontecerá no callback do cliente de token ou exigirá outro clique.
+      // Por enquanto, definimos isSavingToDrive como false, o usuário pode precisar clicar novamente após a autenticação.
+      // Um fluxo mais sofisticado poderia enfileirar a ação.
+      // setIsSavingToDrive(false); // Ou manter true e tratar no callback. Vamos manter true.
+      return; // Aguardar callback do token
     }
 
     try {
-      toast({ title: 'Saving to Drive...', description: 'Please wait.' });
+      toast({ title: 'Salvando no Drive...', description: 'Por favor, aguarde.' });
       const folderId = await ensureRetroGrainFolder();
       if (folderId) {
         const currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
         if (currentImageURI) {
           const savedFile = await uploadFileToDrive(folderId, `${baseFileName}_retrograin`, currentImageURI);
           if (savedFile && savedFile.id) {
-            toast({ title: 'Saved to Drive!', description: `${baseFileName}_retrograin.jpg saved in RetroGrain folder.` });
+            toast({ title: 'Salvo no Drive!', description: `${baseFileName}_retrograin.jpg salvo na pasta RetroGrain.` });
           } else {
-            toast({ title: 'Save Failed', description: 'Could not save the image to Google Drive.', variant: 'destructive' });
+            toast({ title: 'Falha ao Salvar', description: 'Não foi possível salvar a imagem no Google Drive.', variant: 'destructive' });
           }
         } else {
-          toast({ title: 'Error', description: 'Could not generate image data for saving.', variant: 'destructive' });
+          toast({ title: 'Erro', description: 'Não foi possível gerar os dados da imagem para salvar.', variant: 'destructive' });
         }
       } else {
-        toast({ title: 'Folder Error', description: 'Could not create or find the RetroGrain folder in Google Drive.', variant: 'destructive' });
+        toast({ title: 'Erro na Pasta', description: 'Não foi possível criar ou encontrar a pasta RetroGrain no Google Drive.', variant: 'destructive' });
       }
     } catch (error: any) {
-      console.error('Error saving to drive:', error);
-      toast({ title: 'Save Error', description: error.message || 'An unexpected error occurred.', variant: 'destructive' });
+      console.error('Erro ao salvar no drive:', error);
+      toast({ title: 'Erro ao Salvar', description: error.message || 'Ocorreu um erro inesperado.', variant: 'destructive' });
     } finally {
       setIsSavingToDrive(false);
     }
@@ -212,60 +212,60 @@ export function ActionButtonsSection() {
   const handleDisconnectDrive = () => {
     revokeAccessToken();
     setIsDriveAuthorized(false);
-    toast({ title: 'Google Drive Disconnected' });
+    toast({ title: 'Google Drive Desconectado' });
   };
 
   const handleReset = () => {
     if (!originalImage) return;
     dispatchSettings({ type: 'RESET_SETTINGS' });
-    toast({ title: 'Settings Reset', description: 'All adjustments have been reset for the current image.' });
+    toast({ title: 'Ajustes Resetados', description: 'Todos os ajustes foram resetados para a imagem atual.' });
   };
 
   const handleCopySettings = () => {
     if (!originalImage) {
-      toast({ title: 'No Image', description: 'Upload an image to copy its settings.' });
+      toast({ title: 'Nenhuma Imagem', description: 'Carregue uma imagem para copiar seus ajustes.' });
       return;
     }
     copyActiveSettings();
-    toast({ title: 'Settings Copied!', description: 'Current image adjustments are ready to be pasted.' });
+    toast({ title: 'Ajustes Copiados!', description: 'Os ajustes da imagem atual estão prontos para serem colados.' });
   };
 
   const handlePasteSettings = () => {
     if (!originalImage) {
-      toast({ title: 'No Image', description: 'Select an image to paste settings to.' });
+      toast({ title: 'Nenhuma Imagem', description: 'Selecione uma imagem para colar os ajustes.' });
       return;
     }
     if (!copiedSettings) {
-      toast({ title: 'No Settings Copied', description: 'Copy settings from another image first.' });
+      toast({ title: 'Nenhum Ajuste Copiado', description: 'Copie os ajustes de outra imagem primeiro.' });
       return;
     }
     pasteSettingsToActiveImage();
-    toast({ title: 'Settings Pasted!', description: 'Adjustments have been applied to the current image.' });
+    toast({ title: 'Ajustes Colados!', description: 'Os ajustes foram aplicados à imagem atual.' });
   };
 
-  const downloadButtonText = allImages.length > 1 ? "Download All (ZIP)" : "Download Image";
+  const downloadButtonText = allImages.length > 1 ? "Baixar Tudo (ZIP)" : "Baixar Imagem";
 
   return (
     <div className="space-y-3 w-full max-w-[14rem] mx-auto">
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
         <RotateCcwSquare className="mr-2 h-4 w-4" /> 
-        Reset Adjustments
+        Resetar Ajustes
       </Button>
       <div className="grid grid-cols-2 gap-2">
         <Button onClick={handleCopySettings} disabled={!originalImage} variant="outline" className="w-full">
           <Copy className="mr-2 h-4 w-4" />
-          Copy
+          Copiar
         </Button>
         <Button onClick={handlePasteSettings} disabled={!originalImage || !copiedSettings} variant="outline" className="w-full">
           <ClipboardPaste className="mr-2 h-4 w-4" />
-          Paste
+          Colar
         </Button>
       </div>
       
       {firebaseUser && (
         isDriveAuthorized ? (
           <Button onClick={handleDisconnectDrive} variant="outline" className="w-full">
-            Disconnect Drive
+            Desconectar Drive
           </Button>
         ) : (
           <Button 
@@ -275,7 +275,7 @@ export function ActionButtonsSection() {
             className="w-full"
           >
             <Save className="mr-2 h-4 w-4" />
-            {isSavingToDrive ? 'Connecting...' : 'Connect to Drive'}
+            {isSavingToDrive ? 'Conectando...' : 'Conectar ao Drive'}
           </Button>
         )
       )}
@@ -284,11 +284,11 @@ export function ActionButtonsSection() {
          <Button 
             onClick={handleSaveToDrive} 
             disabled={isSavingToDrive || !originalImage} 
-            variant="default" // Or outline, depending on preference
+            variant="default" // Ou outline, dependendo da preferência
             className="w-full"
           >
             <Save className="mr-2 h-4 w-4" />
-            {isSavingToDrive ? 'Saving...' : 'Save to Google Drive'}
+            {isSavingToDrive ? 'Salvando...' : 'Salvar no Google Drive'}
           </Button>
       )}
 
