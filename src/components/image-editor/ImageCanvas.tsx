@@ -162,16 +162,24 @@ export function ImageCanvas() {
       ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
       ctx.globalCompositeOperation = 'source-over'; // Reset
     }
+
+    // 5. Apply Tint
+    if (settings.tintColor && settings.tintIntensity > 0) {
+      ctx.globalCompositeOperation = 'overlay'; // Common blending mode for tint
+      ctx.fillStyle = settings.tintColor;
+      ctx.globalAlpha = settings.tintIntensity;
+      ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
+      ctx.globalAlpha = 1.0; // Reset alpha
+      ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+    }
     
-    // 5. Apply Vignette
+    // 6. Apply Vignette
     if (settings.vignetteIntensity > 0) {
       const centerX = 0; // Relative to translated center
       const centerY = 0;
       const radiusX = contentWidth / 2;
       const radiusY = contentHeight / 2;
-      // Make vignette elliptical based on content aspect ratio
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
-
 
       const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
       gradient.addColorStop(0, `rgba(0,0,0,0)`);
@@ -180,21 +188,17 @@ export function ImageCanvas() {
       ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
     }
 
-    // 6. Apply Grain
+    // 7. Apply Grain
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
-        ctx.save(); // Save context state before applying grain
+        ctx.save(); 
         ctx.fillStyle = noisePatternRef.current;
-        ctx.globalAlpha = settings.grainIntensity * 0.5; // Grain is usually subtle
+        ctx.globalAlpha = settings.grainIntensity * 0.5; 
         ctx.globalCompositeOperation = 'overlay';
-        // Ensure grain covers the entire transformed image area
-        // We need to fill a rectangle in the original (unrotated, unscaled by this transform) coordinate system
-        // that corresponds to the current view.
-        // Since transforms are already applied, filling from -contentWidth/2, -contentHeight/2 works.
         ctx.fillRect(-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight);
-        ctx.restore(); // Restore alpha and composite operation
+        ctx.restore(); 
     }
 
-    ctx.restore(); // Restore all transformations and settings
+    ctx.restore(); 
   }, [originalImage, settings, canvasRef, isPreviewing]);
 
   const debouncedDrawImage = useMemo(
@@ -205,7 +209,7 @@ export function ImageCanvas() {
   useEffect(() => {
     if (originalImage) {
       debouncedDrawImage();
-    } else { // Clear canvas if no image
+    } else { 
         const canvas = canvasRef.current;
         if (canvas) {
             const ctx = canvas.getContext('2d');
