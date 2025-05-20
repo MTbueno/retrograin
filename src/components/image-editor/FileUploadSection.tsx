@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useRef } from 'react';
@@ -8,7 +9,7 @@ import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function FileUploadSection() {
-  const { setOriginalImage, dispatchSettings, setFileName } = useImageEditor();
+  const { setOriginalImage, dispatchSettings, setBaseFileName } = useImageEditor(); // Changed to setBaseFileName
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -30,7 +31,8 @@ export function FileUploadSection() {
         img.onload = () => {
           setOriginalImage(img);
           dispatchSettings({ type: 'RESET_SETTINGS' }); // Reset settings for new image
-          setFileName(file.name.replace(/\.[^/.]+$/, "") + "_retrograin.png"); // Set initial download name
+          // Set base file name without extension
+          setBaseFileName(file.name.replace(/\.[^/.]+$/, "")); 
         };
         img.onerror = () => {
            toast({

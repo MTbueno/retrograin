@@ -3,17 +3,15 @@
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
-import { Download, RotateCcwSquareIcon as ResetIcon } from 'lucide-react';
+import { Download, FileImage, RotateCcwSquareIcon as ResetIcon } from 'lucide-react'; // Added FileImage for JPEG
 import { useToast } from '@/hooks/use-toast';
 
 export function ActionButtonsSection() {
-  // getCanvasDataURL is used to get the latest image URI on demand
-  // processedImageURI is removed from here as it's not reliably up-to-date for the download button's direct use.
-  const { originalImage, dispatchSettings, fileName, getCanvasDataURL, setProcessedImageURI } = useImageEditor();
+  const { originalImage, dispatchSettings, baseFileName, getCanvasDataURL, setIsPreviewing } = useImageEditor();
   const { toast } = useToast();
 
-  const handleDownload = () => {
-    if (!originalImage) { // Simplified check, actual URI check below
+  const handleDownload = (format: 'png' | 'jpeg') => {
+    if (!originalImage) {
       toast({
         title: 'Error',
         description: 'No image to download.',
@@ -22,27 +20,36 @@ export function ActionButtonsSection() {
       return;
     }
 
-    const currentImageURI = getCanvasDataURL(); // Get fresh URI on click
+    // Ensure we are not in preview mode for final quality download
+    setIsPreviewing(false); 
 
-    if (!currentImageURI) {
-      toast({
-        title: 'Error',
-        description: 'Could not generate image for download.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    // Optionally, update the context's processedImageURI if other parts rely on it being the last downloaded URI
-    // setProcessedImageURI(currentImageURI); 
+    // Allow a brief moment for canvas to re-render at full quality if it was previewing
+    setTimeout(() => {
+      const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const quality = format === 'jpeg' ? 0.92 : undefined; // JPEG quality
+      const fileExtension = format === 'jpeg' ? 'jpg' : 'png';
+      
+      const currentImageURI = getCanvasDataURL(mimeType, quality);
 
-    const link = document.createElement('a');
-    link.href = currentImageURI;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast({ title: 'Image Downloaded!', description: `Saved as ${fileName}` });
+      if (!currentImageURI) {
+        toast({
+          title: 'Error',
+          description: 'Could not generate image for download.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      const downloadFileName = `${baseFileName}_retrograin.${fileExtension}`;
+
+      const link = document.createElement('a');
+      link.href = currentImageURI;
+      link.download = downloadFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast({ title: 'Image Downloaded!', description: `Saved as ${downloadFileName}` });
+    }, 50); // Small delay to ensure full quality render if needed
   };
 
   const handleReset = () => {
@@ -53,10 +60,13 @@ export function ActionButtonsSection() {
 
   return (
     <div className="space-y-3">
-      {/* Download button is enabled if there's an original image. URI generation happens on click. */}
-      <Button onClick={handleDownload} disabled={!originalImage} className="w-full" variant="default">
+      <Button onClick={() => handleDownload('png')} disabled={!originalImage} className="w-full" variant="default">
         <Download className="mr-2 h-4 w-4" />
-        Download Image
+        Download (PNG - Melhor Qualidade)
+      </Button>
+      <Button onClick={() => handleDownload('jpeg')} disabled={!originalImage} className="w-full" variant="secondary">
+        <FileImage className="mr-2 h-4 w-4" />
+        Download (JPEG - Menor Tamanho)
       </Button>
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
         <ResetIcon className="mr-2 h-4 w-4" />
