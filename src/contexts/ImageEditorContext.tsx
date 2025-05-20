@@ -18,14 +18,17 @@ export interface ImageSettings {
   colorTemperature: number;
   tintShadowsColor: string;
   tintShadowsIntensity: number;
-  tintShadowsSaturation: number; // Added for tint saturation control
+  tintShadowsSaturation: number;
   tintHighlightsColor: string;
   tintHighlightsIntensity: number;
-  tintHighlightsSaturation: number; // Added for tint saturation control
+  tintHighlightsSaturation: number;
   rotation: number;
   scaleX: number;
   scaleY: number;
-  crop: { x: number; y: number; width: number; height: number; unit: '%' | 'px' } | null;
+  // Crop settings changed from object to zoom/offset
+  cropZoom: number;
+  cropOffsetX: number;
+  cropOffsetY: number;
   filter: string | null;
 }
 
@@ -41,16 +44,19 @@ export const initialImageSettings: ImageSettings = {
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
-  tintShadowsColor: '#808080', // Default to a neutral grey
+  tintShadowsColor: '#808080',
   tintShadowsIntensity: 0,
   tintShadowsSaturation: 1,
-  tintHighlightsColor: '#808080', // Default to a neutral grey
+  tintHighlightsColor: '#808080',
   tintHighlightsIntensity: 0,
   tintHighlightsSaturation: 1,
   rotation: 0,
   scaleX: 1,
   scaleY: 1,
-  crop: null,
+  // Initial crop settings
+  cropZoom: 1,
+  cropOffsetX: 0,
+  cropOffsetY: 0,
   filter: null,
 };
 
@@ -84,10 +90,14 @@ export type SettingsAction =
   | { type: 'ROTATE_CCW' }
   | { type: 'FLIP_HORIZONTAL' }
   | { type: 'FLIP_VERTICAL' }
-  | { type: 'SET_CROP'; payload: ImageSettings['crop'] }
+  // Crop actions changed
+  | { type: 'SET_CROP_ZOOM'; payload: number }
+  | { type: 'SET_CROP_OFFSET_X'; payload: number }
+  | { type: 'SET_CROP_OFFSET_Y'; payload: number }
+  | { type: 'RESET_CROP' } // New action to reset crop
   | { type: 'APPLY_FILTER'; payload: string | null }
   | { type: 'RESET_SETTINGS' }
-  | { type: 'LOAD_SETTINGS'; payload: ImageSettings }; // For loading settings of active image
+  | { type: 'LOAD_SETTINGS'; payload: ImageSettings };
 
 function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSettings {
   switch (action.type) {
@@ -133,43 +143,43 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, scaleX: state.scaleX * -1 };
     case 'FLIP_VERTICAL':
       return { ...state, scaleY: state.scaleY * -1 };
-    case 'SET_CROP':
-      return { ...state, crop: action.payload };
+    // Crop reducer actions updated
+    case 'SET_CROP_ZOOM':
+      return { ...state, cropZoom: Math.max(1, action.payload) }; // Ensure zoom is at least 1
+    case 'SET_CROP_OFFSET_X':
+      return { ...state, cropOffsetX: Math.max(-1, Math.min(1, action.payload)) }; // Clamp between -1 and 1
+    case 'SET_CROP_OFFSET_Y':
+      return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) }; // Clamp between -1 and 1
+    case 'RESET_CROP':
+      return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
     case 'APPLY_FILTER':
       if (action.payload === 'grayscale') {
         return { ...state, filter: action.payload, saturation: 0, hueRotate: 0 };
       }
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
-      return { ...initialImageSettings }; // Return a new copy of initial settings
+      return { ...initialImageSettings };
     case 'LOAD_SETTINGS':
-      return { ...action.payload }; // Load settings for the active image
+      return { ...action.payload };
     default:
       return state;
   }
 }
 
 interface ImageEditorContextType {
-  // These represent the currently active image's data
-  originalImage: HTMLImageElement | null; 
-  settings: ImageSettings; 
+  originalImage: HTMLImageElement | null;
+  settings: ImageSettings;
   dispatchSettings: Dispatch<SettingsAction>;
   baseFileName: string;
-
-  // Management for all images
   allImages: ImageObject[];
   activeImageId: string | null;
   addImageObject: (imageObject: Omit<ImageObject, 'id' | 'thumbnailDataUrl'>) => void;
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
-  
-  // Canvas and preview
   canvasRef: RefObject<HTMLCanvasElement>;
   getCanvasDataURL: (type?: string, quality?: number) => string | null;
   isPreviewing: boolean;
   setIsPreviewing: (isPreviewing: boolean) => void;
-
-  // Copy/Paste settings
   copiedSettings: ImageSettings | null;
   copyActiveSettings: () => void;
   pasteSettingsToActiveImage: () => void;
@@ -200,25 +210,20 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
   thumbCanvas.width = width;
   thumbCanvas.height = height;
   thumbCtx.drawImage(imageElement, 0, 0, width, height);
-  return thumbCanvas.toDataURL('image/jpeg', 0.8); // JPEG for small thumbnail
+  return thumbCanvas.toDataURL('image/jpeg', 0.8);
 };
 
 
 export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [allImages, setAllImages] = useState<ImageObject[]>([]);
   const [activeImageId, setActiveImageIdInternal] = useState<string | null>(null);
-  
-  // These states represent the currently active image for editing
   const [currentActiveImageElement, setCurrentActiveImageElement] = useState<HTMLImageElement | null>(null);
   const [currentBaseFileName, setCurrentBaseFileName] = useState<string>('retrograin_image');
   const [currentSettings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
-
   const [isPreviewing, setIsPreviewing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
 
-  // Effect to update active image's settings in allImages when currentSettings change
   useEffect(() => {
     if (activeImageId && currentSettings) {
       setAllImages(prevImages =>
@@ -236,16 +241,15 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       ...imageData,
       id: newId,
       thumbnailDataUrl,
-      settings: { ...initialImageSettings } // Each new image starts with default settings
+      settings: { ...initialImageSettings }
     };
     setAllImages(prev => [...prev, newImageObject]);
-    setActiveImageIdInternal(newId); // Automatically set new image as active
+    setActiveImageIdInternal(newId);
   }, []);
 
   const removeImage = useCallback((id: string) => {
     setAllImages(prev => prev.filter(img => img.id !== id));
     if (activeImageId === id) {
-      // If active image is removed, try to set the first remaining image as active, or null
       const remainingImages = allImages.filter(img => img.id !== id);
       setActiveImageIdInternal(remainingImages.length > 0 ? remainingImages[0].id : null);
     }
@@ -266,29 +270,24 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       dispatchSettings({ type: 'RESET_SETTINGS' });
     }
   }, [allImages]);
-  
-  // Effect to set the first image as active when allImages array is populated for the first time
+
   useEffect(() => {
     if (allImages.length > 0 && !activeImageId) {
       setActiveImageId(allImages[0].id);
     }
   }, [allImages, activeImageId, setActiveImageId]);
 
-
   const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality?: number) => {
     const canvas = canvasRef.current;
     if (!canvas || !currentActiveImageElement) return null;
-    if (isPreviewing) {
-      console.warn("getCanvasDataURL called while isPreviewing is true. Consider calling setIsPreviewing(false) before this for intended quality.");
-    }
     return canvas.toDataURL(type, quality);
-  }, [isPreviewing, currentActiveImageElement]);
+  }, [currentActiveImageElement]);
 
   const copyActiveSettings = useCallback(() => {
     if (activeImageId) {
       const activeImgObject = allImages.find(img => img.id === activeImageId);
       if (activeImgObject) {
-        setCopiedSettings({ ...activeImgObject.settings }); // Store a copy
+        setCopiedSettings({ ...activeImgObject.settings });
       }
     }
   }, [activeImageId, allImages]);
@@ -296,10 +295,8 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const pasteSettingsToActiveImage = useCallback(() => {
     if (activeImageId && copiedSettings) {
       dispatchSettings({ type: 'LOAD_SETTINGS', payload: { ...copiedSettings } });
-      // The useEffect for currentSettings will persist this to allImages
     }
   }, [activeImageId, copiedSettings]);
-
 
   return (
     <ImageEditorContext.Provider
@@ -308,18 +305,15 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         settings: currentSettings,
         dispatchSettings,
         baseFileName: currentBaseFileName,
-        
         allImages,
         activeImageId,
         addImageObject,
         removeImage,
         setActiveImageId,
-        
         canvasRef,
         getCanvasDataURL,
         isPreviewing,
         setIsPreviewing,
-
         copiedSettings,
         copyActiveSettings,
         pasteSettingsToActiveImage,
@@ -337,3 +331,5 @@ export function useImageEditor() {
   }
   return context;
 }
+
+    

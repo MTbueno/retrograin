@@ -1,12 +1,10 @@
 
 "use client";
 
-import type { RefObject } from 'react';
 import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
 
-// Helper function to apply CSS-like filters on canvas
 const applyCssFilters = (
   ctx: CanvasRenderingContext2D,
   settings: ImageSettings
@@ -15,14 +13,12 @@ const applyCssFilters = (
   let baseBrightness = settings.brightness;
   let baseContrast = settings.contrast;
 
-  // Apply Blacks adjustment by modulating brightness and contrast
   if (settings.blacks !== 0) {
     baseContrast *= (1 - settings.blacks * 0.5); 
     baseBrightness *= (1 + settings.blacks * 0.2);
     baseContrast = Math.max(0.1, Math.min(3, baseContrast));
     baseBrightness = Math.max(0.1, Math.min(3, baseBrightness));
   }
-
 
   if (baseBrightness !== 1) filterString += `brightness(${baseBrightness * 100}%) `;
   if (baseContrast !== 1) filterString += `contrast(${baseContrast * 100}%) `;
@@ -43,7 +39,6 @@ const applyCssFilters = (
   ctx.filter = filterString.trim();
 };
 
-// Helper functions for color manipulation (used for Tint Saturation)
 const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
@@ -60,7 +55,7 @@ const rgbToHex = (r: number, g: number, b: number): string => {
 };
 
 const desaturateRgb = (rgb: { r: number; g: number; b: number }, saturation: number): { r: number; g: number; b: number } => {
-  const gray = rgb.r * 0.3086 + rgb.g * 0.6094 + rgb.b * 0.0820; // BT.709 luminance
+  const gray = rgb.r * 0.3086 + rgb.g * 0.6094 + rgb.b * 0.0820;
   return {
     r: Math.round(rgb.r * saturation + gray * (1 - saturation)),
     g: Math.round(rgb.g * saturation + gray * (1 - saturation)),
@@ -68,8 +63,6 @@ const desaturateRgb = (rgb: { r: number; g: number; b: number }, saturation: num
   };
 };
 
-
-// Debounce helper function
 function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
   return (...args: Parameters<F>): void => {
@@ -84,7 +77,7 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 
 const PREVIEW_SCALE_FACTOR = 0.5; 
 const NOISE_CANVAS_SIZE = 100; 
-const TINT_EFFECT_SCALING_FACTOR = 0.3; // Reduced from 0.6 for more subtlety
+const TINT_EFFECT_SCALING_FACTOR = 0.3; 
 
 export function ImageCanvas() { 
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
@@ -132,20 +125,25 @@ export function ImageCanvas() {
         noisePatternRef.current = ctx.createPattern(noiseCanvasRef.current, 'repeat');
     }
 
-    const { rotation, scaleX, scaleY, crop } = settings;
+    const { rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY } = settings;
 
-    let sx = 0, sy = 0;
-    let sWidth = originalImage.naturalWidth;
-    let sHeight = originalImage.naturalHeight;
+    // Calculate source dimensions based on zoom, maintaining aspect ratio
+    let sWidth = originalImage.naturalWidth / cropZoom;
+    let sHeight = originalImage.naturalHeight / cropZoom;
 
-    if (crop) {
-      sx = crop.unit === '%' ? (crop.x / 100) * originalImage.naturalWidth : crop.x;
-      sy = crop.unit === '%' ? (crop.y / 100) * originalImage.naturalHeight : crop.y;
-      sWidth = crop.unit === '%' ? (crop.width / 100) * originalImage.naturalWidth : crop.width;
-      sHeight = crop.unit === '%' ? (crop.height / 100) * originalImage.naturalHeight : crop.height;
-      sWidth = Math.max(1, sWidth);
-      sHeight = Math.max(1, sHeight);
-    }
+    // Calculate source x, y based on offset and zoom
+    // cropOffsetX/Y range from -1 to 1. 0 is center.
+    const maxPanX = originalImage.naturalWidth - sWidth;
+    const maxPanY = originalImage.naturalHeight - sHeight;
+    
+    let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
+    let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
+
+    // Clamp sx, sy to be within image bounds
+    sx = Math.max(0, Math.min(sx, originalImage.naturalWidth - sWidth));
+    sy = Math.max(0, Math.min(sy, originalImage.naturalHeight - sHeight));
+    sWidth = Math.max(1, sWidth); // Ensure width is at least 1
+    sHeight = Math.max(1, sHeight); // Ensure height is at least 1
     
     let contentWidth = sWidth;
     let contentHeight = sHeight;
@@ -179,57 +177,39 @@ export function ImageCanvas() {
       -contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight
     );
 
-    // Draw visual crop rectangle if crop is active
-    if (settings.crop) { 
-        const currentFilter = ctx.filter;
-        ctx.filter = 'none'; // Ensure border is not affected by image filters
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.lineWidth = 2 / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1) ; 
-        ctx.strokeRect(
-            -contentWidth / 2,
-            -contentHeight / 2,
-            contentWidth,
-            contentHeight
-        );
-        ctx.filter = currentFilter; // Restore filter
-    }
-
-
+    // Visual crop rectangle is no longer needed as crop is part of drawImage source
+    
     ctx.filter = 'none';
     const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-    // Shadows adjustment (canvas based)
-    if (settings.shadows > 0) { // Lighten shadows
+    if (settings.shadows > 0) {
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.35 * 0.5; // Reduced factor
+      ctx.globalAlpha = settings.shadows * 0.175; // Adjusted factor (0.35 * 0.5)
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.shadows < 0) { // Darken shadows
+    } else if (settings.shadows < 0) {
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.2 * 0.5; // Reduced factor
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.1; // Adjusted factor (0.2 * 0.5)
       ctx.fillStyle = 'rgb(50, 50, 50)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over'; 
 
-    // Highlights adjustment (canvas based)
-    if (settings.highlights < 0) { // Darken highlights (recover)
+    if (settings.highlights < 0) {
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.35 * 0.5; // Reduced factor
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.175; // Adjusted factor (0.35 * 0.5)
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.highlights > 0) { // Brighten highlights
+    } else if (settings.highlights > 0) {
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.2 * 0.5; // Reduced factor
+      ctx.globalAlpha = settings.highlights * 0.1; // Adjusted factor (0.2 * 0.5)
       ctx.fillStyle = 'rgb(200, 200, 200)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over';
 
-    // Color Temperature
     if (settings.colorTemperature !== 0) {
       const temp = settings.colorTemperature / 100; 
       const alpha = Math.abs(temp) * 0.2; 
@@ -244,7 +224,7 @@ export function ImageCanvas() {
     }
 
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
-      if (intensity > 0 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') { // Added check for empty/black hex
+      if (intensity > 0 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') {
         const rgbColor = hexToRgb(baseColorHex);
         if (rgbColor) {
           const saturatedRgb = desaturateRgb(rgbColor, saturation);
@@ -252,14 +232,12 @@ export function ImageCanvas() {
           
           ctx.globalCompositeOperation = blendMode;
           ctx.fillStyle = finalColorHex;
-          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR;
+          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR * 0.6; // Further reduced intensity
           ctx.fillRect(...rectArgs);
         }
       }
     };
     
-    // Apply Tints (Shadows and Highlights, Midtones removed)
-    // Note: The "inversion" of color-dodge and color-burn is based on user feedback for desired effect.
     applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
     applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
         
@@ -327,3 +305,5 @@ export function ImageCanvas() {
     />
   );
 }
+
+    
