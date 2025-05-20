@@ -9,7 +9,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/
 // IMPORTANT: Replace these with your actual Firebase project credentials
 const firebaseConfig = {
   apiKey: "AIzaSyChKxl2EoNwytbXT2zlN0qb_J9RGKviXDQ",
-  authDomain: "arthubdocs.firebaseapp.com"
+  authDomain: "arthubdocs.firebaseapp.com",
   projectId: "arthubdocs",
   storageBucket: "arthubdocs.firebasestorage.app",
   messagingSenderId: "323333692428",
