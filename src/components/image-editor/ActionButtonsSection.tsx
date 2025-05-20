@@ -3,11 +3,11 @@
 
 import { useImageEditor, type ImageObject } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
-import { Download, RotateCcwSquare, Copy, ClipboardPaste, Save } from 'lucide-react'; // Added Save Icon
+import { Download, RotateCcwSquare, Copy, ClipboardPaste, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/contexts/AuthContext'; // For checking Firebase Auth user
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   loadGapi, 
   initTokenClient, 
@@ -34,39 +34,31 @@ export function ActionButtonsSection() {
     copiedSettings
   } = useImageEditor();
   const { toast } = useToast();
-  const { user: firebaseUser } = useAuth(); // Firebase user
+  const { user: firebaseUser } = useAuth(); 
 
   const [isGapiLoaded, setIsGapiLoaded] = useState(false);
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
   
-  // Token client callback
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
     if (tokenResponse && tokenResponse.access_token) {
       gapi.client.setToken({ access_token: tokenResponse.access_token });
       setIsDriveAuthorized(true);
       toast({ title: 'Google Drive Conectado!', description: 'Agora você pode salvar imagens no Drive.' });
-      // Automatically try to save if an action was pending
-      if (isSavingToDrive) { 
-        // This logic might need refinement if saveToDrive was called before token response
-        // For now, we assume the user clicks "Save to Drive" again or this state triggers action.
-      }
     } else {
       setIsDriveAuthorized(false);
       console.error("Falha ao obter token de acesso ou erro na tokenResponse:", tokenResponse);
       const errorMessage = (tokenResponse as any)?.error_description || "Falha ao conectar ao Google Drive.";
       toast({ title: 'Falha na Conexão com Drive', description: errorMessage, variant: 'destructive' });
     }
-  }, [toast, isSavingToDrive]);
+    setIsSavingToDrive(false); // Reset saving state regardless of outcome
+  }, [toast]);
 
 
   useEffect(() => {
     loadGapi(() => {
       setIsGapiLoaded(true);
-      // Initialize token client once GAPI is loaded
-      // The actual token request will happen on button click
       initTokenClient(handleTokenResponse);
-      // Check initial auth state
       if (isDriveAuthenticated()) {
         setIsDriveAuthorized(true);
       }
@@ -74,7 +66,6 @@ export function ActionButtonsSection() {
   }, [handleTokenResponse]);
   
   useEffect(() => {
-    // This effect checks GAPI's auth state if GAPI itself is loaded.
     if (isGapiLoaded) {
         setIsDriveAuthorized(isDriveAuthenticated());
     }
@@ -160,29 +151,32 @@ export function ActionButtonsSection() {
       toast({ title: 'Não Logado', description: 'Por favor, faça login para salvar no Google Drive.', variant: 'default' });
       return;
     }
+    if (!originalImage && isDriveAuthorized) { // Only show this if already authorized but no image
+      toast({ title: 'Nenhuma Imagem', description: 'Por favor, carregue e edite uma imagem para salvar.', variant: 'default' });
+      return;
+    }
+  
+    if (!isGapiLoaded) {
+      toast({ title: 'API do Google não carregada', description: 'Por favor, aguarde um momento e tente novamente.', variant: 'default' });
+      return;
+    }
+  
+    if (!isDriveAuthenticated()) {
+      toast({ title: 'Autorização Necessária', description: 'Por favor, autorize o acesso ao Google Drive.', variant: 'default' });
+      setIsSavingToDrive(true); // Indicate an action is pending user authorization
+      requestAccessToken();
+      // We set isSavingToDrive to false in the token callback or if user cancels
+      return; 
+    }
+  
+    // If we reach here, user is authenticated with Drive and GAPI is loaded.
+    // Proceed to save only if there's an image.
     if (!originalImage) {
       toast({ title: 'Nenhuma Imagem', description: 'Por favor, carregue e edite uma imagem para salvar.', variant: 'default' });
       return;
     }
 
     setIsSavingToDrive(true);
-
-    if (!isGapiLoaded) {
-        toast({ title: 'API do Google não carregada', description: 'Por favor, aguarde um momento e tente novamente.', variant: 'default' });
-        setIsSavingToDrive(false);
-        return;
-    }
-    
-    if (!isDriveAuthenticated()) {
-      toast({ title: 'Autorização Necessária', description: 'Por favor, autorize o acesso ao Google Drive.', variant: 'default' });
-      requestAccessToken(); // Isso acionará o pop-up do GIS
-      // O salvamento real acontecerá no callback do cliente de token ou exigirá outro clique.
-      // Por enquanto, definimos isSavingToDrive como false, o usuário pode precisar clicar novamente após a autenticação.
-      // Um fluxo mais sofisticado poderia enfileirar a ação.
-      // setIsSavingToDrive(false); // Ou manter true e tratar no callback. Vamos manter true.
-      return; // Aguardar callback do token
-    }
-
     try {
       toast({ title: 'Salvando no Drive...', description: 'Por favor, aguarde.' });
       const folderId = await ensureRetroGrainFolder();
@@ -264,13 +258,24 @@ export function ActionButtonsSection() {
       
       {firebaseUser && (
         isDriveAuthorized ? (
-          <Button onClick={handleDisconnectDrive} variant="outline" className="w-full">
-            Desconectar Drive
-          </Button>
+          <>
+            <Button 
+              onClick={handleSaveToDrive} 
+              disabled={isSavingToDrive || !originalImage} 
+              variant="default" 
+              className="w-full"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {isSavingToDrive ? 'Salvando...' : 'Salvar no Google Drive'}
+            </Button>
+            <Button onClick={handleDisconnectDrive} variant="outline" className="w-full">
+              Desconectar Drive
+            </Button>
+          </>
         ) : (
           <Button 
-            onClick={handleSaveToDrive} 
-            disabled={!isGapiLoaded || isSavingToDrive || !originalImage} 
+            onClick={handleSaveToDrive} // This same handler will now trigger auth if needed
+            disabled={!isGapiLoaded || isSavingToDrive } 
             variant="outline" 
             className="w-full"
           >
@@ -278,18 +283,6 @@ export function ActionButtonsSection() {
             {isSavingToDrive ? 'Conectando...' : 'Conectar ao Drive'}
           </Button>
         )
-      )}
-
-      {firebaseUser && isDriveAuthorized && (
-         <Button 
-            onClick={handleSaveToDrive} 
-            disabled={isSavingToDrive || !originalImage} 
-            variant="default" // Ou outline, dependendo da preferência
-            className="w-full"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isSavingToDrive ? 'Salvando...' : 'Salvar no Google Drive'}
-          </Button>
       )}
 
       <Button onClick={handleDownload} disabled={allImages.length === 0} className="w-full" variant="default">
