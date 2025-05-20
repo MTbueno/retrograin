@@ -3,14 +3,16 @@
 
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
-import { Download, FileImage, RotateCcwSquareIcon as ResetIcon } from 'lucide-react'; // Added FileImage for JPEG
+import { Download, RotateCcwSquareIcon as ResetIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+const JPEG_QUALITY = 0.92;
 
 export function ActionButtonsSection() {
   const { originalImage, dispatchSettings, baseFileName, getCanvasDataURL, setIsPreviewing } = useImageEditor();
   const { toast } = useToast();
 
-  const handleDownload = (format: 'png' | 'jpeg') => {
+  const handleDownload = () => {
     if (!originalImage) {
       toast({
         title: 'Error',
@@ -25,11 +27,10 @@ export function ActionButtonsSection() {
 
     // Allow a brief moment for canvas to re-render at full quality if it was previewing
     setTimeout(() => {
-      const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
-      const quality = format === 'jpeg' ? 0.92 : undefined; // JPEG quality
-      const fileExtension = format === 'jpeg' ? 'jpg' : 'png';
+      const mimeType = 'image/jpeg';
+      const fileExtension = 'jpg';
       
-      const currentImageURI = getCanvasDataURL(mimeType, quality);
+      const currentImageURI = getCanvasDataURL(mimeType, JPEG_QUALITY);
 
       if (!currentImageURI) {
         toast({
@@ -60,13 +61,9 @@ export function ActionButtonsSection() {
 
   return (
     <div className="space-y-3">
-      <Button onClick={() => handleDownload('png')} disabled={!originalImage} className="w-full" variant="default">
+      <Button onClick={handleDownload} disabled={!originalImage} className="w-full" variant="default">
         <Download className="mr-2 h-4 w-4" />
-        Download (PNG - Melhor Qualidade)
-      </Button>
-      <Button onClick={() => handleDownload('jpeg')} disabled={!originalImage} className="w-full" variant="secondary">
-        <FileImage className="mr-2 h-4 w-4" />
-        Download (JPEG - Menor Tamanho)
+        Download Image (JPEG)
       </Button>
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
         <ResetIcon className="mr-2 h-4 w-4" />
