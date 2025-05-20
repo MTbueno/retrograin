@@ -17,15 +17,8 @@ const applyCssFilters = (
 
   // Apply Blacks adjustment by modulating brightness and contrast
   if (settings.blacks !== 0) {
-    // If blacks > 0 (lift), decrease contrast, slightly increase brightness
-    // If blacks < 0 (crush), increase contrast, slightly decrease brightness
-    // The settings.blacks is from -1 to 1
-    // Adjust contrast: max 50% change based on blacks setting
     baseContrast *= (1 - settings.blacks * 0.5); 
-    // Adjust brightness: max 20% change based on blacks setting
     baseBrightness *= (1 + settings.blacks * 0.2);
-
-    // Clamp values to avoid extremes, e.g., 0.1 to 3 for contrast/brightness
     baseContrast = Math.max(0.1, Math.min(3, baseContrast));
     baseBrightness = Math.max(0.1, Math.min(3, baseBrightness));
   }
@@ -36,7 +29,6 @@ const applyCssFilters = (
   if (settings.saturation !== 1) filterString += `saturate(${settings.saturation * 100}%) `;
   
   if (settings.exposure !== 0) {
-    // Exposure might interact with the new blacks adjustment. Keep its effect relative.
     const exposureEffect = 1 + settings.exposure * 0.5; 
     filterString += `brightness(${exposureEffect * 100}%) `;
   }
@@ -50,6 +42,32 @@ const applyCssFilters = (
   }
   ctx.filter = filterString.trim();
 };
+
+// Helper functions for color manipulation (used for Tint Saturation)
+const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : null;
+};
+
+const rgbToHex = (r: number, g: number, b: number): string => {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+};
+
+const desaturateRgb = (rgb: { r: number; g: number; b: number }, saturation: number): { r: number; g: number; b: number } => {
+  const gray = rgb.r * 0.3086 + rgb.g * 0.6094 + rgb.b * 0.0820; // BT.709 luminance
+  return {
+    r: Math.round(rgb.r * saturation + gray * (1 - saturation)),
+    g: Math.round(rgb.g * saturation + gray * (1 - saturation)),
+    b: Math.round(rgb.b * saturation + gray * (1 - saturation)),
+  };
+};
+
 
 // Debounce helper function
 function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
@@ -65,15 +83,14 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 }
 
 const PREVIEW_SCALE_FACTOR = 0.5; 
-const NOISE_CANVAS_SIZE = 100; // Size of the noise texture
-const TINT_EFFECT_SCALING_FACTOR = 0.6; // Factor to further reduce tint intensity
+const NOISE_CANVAS_SIZE = 100; 
+const TINT_EFFECT_SCALING_FACTOR = 0.6; 
 
 export function ImageCanvas() { 
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
   const noiseCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const noisePatternRef = useRef<CanvasPattern | null>(null);
 
-  // Generate noise pattern
   useEffect(() => {
     if (typeof window !== 'undefined') { 
         const noiseCv = document.createElement('canvas');
@@ -155,52 +172,65 @@ export function ImageCanvas() {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
 
-    // 1. Apply CSS-like filters (includes Blacks adjustment now)
     applyCssFilters(ctx, settings);
     
-    // 2. Draw the image (filters are applied here)
     ctx.drawImage(
       originalImage, sx, sy, sWidth, sHeight,
       -contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight
     );
 
-    // 3. Reset CSS filters for manual drawing effects
+    // Draw visual crop rectangle if crop is active
+    if (settings.crop && (sWidth < originalImage.naturalWidth || sHeight < originalImage.naturalHeight)) {
+        // Temporarily save current filter to restore it later
+        const currentFilter = ctx.filter;
+        ctx.filter = 'none'; // Ensure border is not affected by image filters
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        // Adjust lineWidth based on the effective scale applied to the content *within* the preview scaling
+        // If PREVIEW_SCALE_FACTOR is 0.5, the line needs to be twice as thick to appear consistent.
+        // The scaling due to scaleX/scaleY is already part of the transformation matrix.
+        ctx.lineWidth = 2 / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1) ; 
+        ctx.strokeRect(
+            -contentWidth / 2,
+            -contentHeight / 2,
+            contentWidth,
+            contentHeight
+        );
+        ctx.filter = currentFilter; // Restore filter
+    }
+
+
     ctx.filter = 'none';
     const rectArgs: [number, number, number, number] = [-contentWidth / 2, -contentHeight / 2, contentWidth, contentHeight];
 
-    // 4. Apply Highlights & Shadows (Canvas Blending)
-    // Shadows (settings.shadows: -1 to 1)
-    if (settings.shadows > 0) { // Brighten shadows
+    if (settings.shadows > 0) { 
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.35; // Reduced further
+      ctx.globalAlpha = settings.shadows * 0.35 * 0.7; 
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.shadows < 0) { // Darken shadows
+    } else if (settings.shadows < 0) { 
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.2; // Reduced further
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.2 * 0.7; 
       ctx.fillStyle = 'rgb(50, 50, 50)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over'; 
 
-    // Highlights (settings.highlights: -1 to 1)
-    if (settings.highlights < 0) { // Darken/recover highlights
+    if (settings.highlights < 0) { 
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.35; // Reduced further
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.35 * 0.7; 
       ctx.fillStyle = 'rgb(128, 128, 128)'; 
       ctx.fillRect(...rectArgs);
-    } else if (settings.highlights > 0) { // Brighten highlights
+    } else if (settings.highlights > 0) { 
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.2; // Reduced further
+      ctx.globalAlpha = settings.highlights * 0.2 * 0.7; 
       ctx.fillStyle = 'rgb(200, 200, 200)'; 
       ctx.fillRect(...rectArgs);
     }
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over';
 
-
-    // 5. Apply Color Temperature
     if (settings.colorTemperature !== 0) {
       const temp = settings.colorTemperature / 100; 
       const alpha = Math.abs(temp) * 0.2; 
@@ -214,25 +244,27 @@ export function ImageCanvas() {
       ctx.globalCompositeOperation = 'source-over'; 
     }
 
-    // 6. Apply Tint (Shadows, Highlights)
-    if (settings.tintShadowsIntensity > 0 && settings.tintShadowsColor) {
-      ctx.globalCompositeOperation = 'color-dodge'; 
-      ctx.fillStyle = settings.tintShadowsColor;
-      ctx.globalAlpha = settings.tintShadowsIntensity * TINT_EFFECT_SCALING_FACTOR;
-      ctx.fillRect(...rectArgs);
-    }
-        
-    if (settings.tintHighlightsIntensity > 0 && settings.tintHighlightsColor) {
-      ctx.globalCompositeOperation = 'color-burn'; 
-      ctx.fillStyle = settings.tintHighlightsColor;
-      ctx.globalAlpha = settings.tintHighlightsIntensity * TINT_EFFECT_SCALING_FACTOR;
-      ctx.fillRect(...rectArgs);
-    }
+    const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
+      if (intensity > 0 && baseColorHex) {
+        const rgbColor = hexToRgb(baseColorHex);
+        if (rgbColor) {
+          const saturatedRgb = desaturateRgb(rgbColor, saturation);
+          const finalColorHex = rgbToHex(saturatedRgb.r, saturatedRgb.g, saturatedRgb.b);
+          
+          ctx.globalCompositeOperation = blendMode;
+          ctx.fillStyle = finalColorHex;
+          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR;
+          ctx.fillRect(...rectArgs);
+        }
+      }
+    };
 
+    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
+    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
+        
     ctx.globalAlpha = 1.0; 
     ctx.globalCompositeOperation = 'source-over'; 
     
-    // 7. Apply Vignette
     if (settings.vignetteIntensity > 0) {
       const centerX = 0; 
       const centerY = 0;
@@ -247,7 +279,6 @@ export function ImageCanvas() {
       ctx.fillRect(...rectArgs);
     }
 
-    // 8. Apply Grain
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
         ctx.save(); 
         ctx.fillStyle = noisePatternRef.current;
