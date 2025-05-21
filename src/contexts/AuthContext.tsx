@@ -31,21 +31,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
-    setLoading(true);
+    // Call signInWithPopup immediately
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
       // User state will be updated by onAuthStateChanged
-      toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
+      // setLoading(true) can be set after the popup initiation if needed,
+      // but the popup itself should be triggered directly by user action.
+      setLoading(true); // Set loading after popup attempt
+      if (result.user) {
+        toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
+      }
     } catch (error: any) {
       console.error("Error signing in with Google: ", error);
-      toast({
-        title: 'Login Failed',
-        description: error.message || 'Could not sign in with Google. Please try again.',
-        variant: 'destructive',
-      });
+      // Check for specific popup blocked error
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+        toast({
+          title: 'Login Popup Blocked',
+          description: 'The Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Login Failed',
+          description: error.message || 'Could not sign in with Google. Please try again.',
+          variant: 'destructive',
+        });
+      }
       setUser(null); // Ensure user is null on error
     } finally {
-      setLoading(false);
+      // setLoading(false) will be handled by onAuthStateChanged or if an error occurs before that
+      // For a more immediate feedback if popup is blocked, we might set loading false here.
+      // However, onAuthStateChanged is the source of truth for user state.
+      // If an error occurs and onAuthStateChanged doesn't fire, we might need to set loading to false here.
+      if (!auth.currentUser) { // If after everything, there's still no user
+          setLoading(false);
+      }
     }
   };
 
@@ -63,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      setLoading(false); // onAuthStateChanged will also set loading, but this ensures it for sign-out errors
     }
   };
 
