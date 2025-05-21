@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
     ],
   },
   devIndicators: {
-    allowedDevOrigins: ['5000-firebase-studio-1747758193383.cluster-etsqrqvqyvd4erxx7qq32imrjk.cloudworkstations.dev'],
+    allowedDevOrigins: ['9003-firebase-studio-1747758193383.cluster-etsqrqvqyvd4erxx7qq32imrjk.cloudworkstations.dev'],
   },
 };
 
