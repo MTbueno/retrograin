@@ -9,6 +9,8 @@ import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 const PREVIEW_SCALE_FACTOR = 0.5;
 const NOISE_CANVAS_SIZE = 100;
+const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
+const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; 
 
 function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
@@ -41,14 +43,6 @@ export function ImageCanvas() {
     
     const {
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
-      brightness, // Used by applyCssFilters
-      contrast, // Used by applyCssFilters
-      saturation, // Used by applyCssFilters
-      exposure, // Used by applyCssFilters
-      blacks, // Used by applyCssFilters
-      vibrance, // Used by applyCssFilters
-      // hueRotate, // Removed
-      filter, // Used by applyCssFilters - for presets
       highlights, 
       shadows,
       colorTemperature,
@@ -57,27 +51,24 @@ export function ImageCanvas() {
       vignetteIntensity, grainIntensity,
     } = settings;
 
-    // Calculate dimensions of the content to be drawn from the original image
     let contentWidth = originalImage.naturalWidth / cropZoom;
     let contentHeight = originalImage.naturalHeight / cropZoom;
 
-    // Calculate the source x, y for cropping
     const maxPanX = originalImage.naturalWidth - contentWidth;
     const maxPanY = originalImage.naturalHeight - contentHeight;
     let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
     let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
 
-    // Ensure crop dimensions are valid
     contentWidth = Math.max(1, Math.round(contentWidth));
     contentHeight = Math.max(1, Math.round(contentHeight));
     sx = Math.max(0, Math.min(Math.round(sx), originalImage.naturalWidth - contentWidth));
     sy = Math.max(0, Math.min(Math.round(sy), originalImage.naturalHeight - contentHeight));
-
+    
     if (![sx, sy, contentWidth, contentHeight].every(val => Number.isFinite(val) && val >= 0) || contentWidth === 0 || contentHeight === 0) {
       console.error("Invalid source dimensions for drawImage:", { sx, sy, contentWidth, contentHeight });
       return;
     }
-    
+
     let canvasPhysicalWidth, canvasPhysicalHeight;
     if (rotation === 90 || rotation === 270) {
       canvasPhysicalWidth = contentHeight;
@@ -101,7 +92,7 @@ export function ImageCanvas() {
         canvasPhysicalWidth = canvasPhysicalHeight > 0 ? Math.round((MAX_PHYSICAL_HEIGHT_CAP / canvasPhysicalHeight) * canvasPhysicalWidth) : MAX_PHYSICAL_HEIGHT_CAP * currentAspectRatio;
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
-
+    
     canvas.width = Math.max(1, Math.round(canvasPhysicalWidth));
     canvas.height = Math.max(1, Math.round(canvasPhysicalHeight));
     
@@ -119,6 +110,7 @@ export function ImageCanvas() {
     ctx.rotate((rotation * Math.PI) / 180); 
     ctx.scale(scaleX, scaleY); 
     
+    ctx.filter = 'none'; 
     applyCssFilters(ctx, settings); 
     
     const destDrawWidth = (rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth;
@@ -150,9 +142,7 @@ export function ImageCanvas() {
         _ctx.globalCompositeOperation = 'source-over'; 
       }
     };
-    
-    const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
-    
+        
     if (Math.abs(shadows) > 0.001) {
       const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
       if (shadows > 0) applyBlendEffect(ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen'); 
@@ -172,7 +162,6 @@ export function ImageCanvas() {
       applyBlendEffect(ctx, effectRectArgs, color, 1, 'overlay'); 
     }
 
-    const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; 
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
       if (intensity > 0.001 && baseColorHex && baseColorHex !== '' && baseColorHex !== '#000000') {
         const rgbColor = hexToRgb(baseColorHex);
@@ -183,6 +172,7 @@ export function ImageCanvas() {
         }
       }
     };
+    
     applyTintWithSaturation(tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation, 'color-dodge'); 
     applyTintWithSaturation(tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation, 'color-burn'); 
     
@@ -201,9 +191,10 @@ export function ImageCanvas() {
     }
 
     if (grainIntensity > 0.001 && noisePatternRef.current) {
+        console.log("Applying grain:", { grainIntensity, pattern: noisePatternRef.current });
         ctx.save();
         ctx.fillStyle = noisePatternRef.current;
-        ctx.globalAlpha = grainIntensity * 0.3; 
+        ctx.globalAlpha = grainIntensity * 0.5; // Increased intensity
         ctx.globalCompositeOperation = 'overlay';
         ctx.fillRect(...effectRectArgs); 
         ctx.restore(); 
@@ -232,6 +223,7 @@ export function ImageCanvas() {
             if (mainCtx) {
                 try {
                     noisePatternRef.current = mainCtx.createPattern(noiseCv, 'repeat');
+                    console.log("Noise pattern created:", noisePatternRef.current);
                 } catch (e) {
                     console.error("Error creating noise pattern:", e);
                     noisePatternRef.current = null; 
@@ -241,7 +233,7 @@ export function ImageCanvas() {
             }
         }
     }
-  }, [canvasRef]); 
+  }, [canvasRef]); // Dependency on canvasRef to re-create if canvas changes
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 150), 
