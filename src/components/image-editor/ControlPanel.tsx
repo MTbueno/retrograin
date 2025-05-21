@@ -18,12 +18,14 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_VERSION_STRING = "alpha 0.1v"; 
+const CURRENT_VERSION_STRING = "alpha 0.1v"; // This should be the current version
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
+    setHasMounted(true);
     setAppVersion(CURRENT_VERSION_STRING);
   }, []);
 
@@ -31,7 +33,7 @@ export function ControlPanel() {
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">
         <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
-        {appVersion && (
+        {hasMounted && appVersion && (
           <p className="text-xs text-muted-foreground text-center mt-1">
             Versão: {appVersion}
           </p>
@@ -42,7 +44,7 @@ export function ControlPanel() {
           <SidebarMenu className="p-4 space-y-6">
             <FileUploadSection />
             <SidebarSeparator />
-            <AdjustmentsSection /> 
+            <AdjustmentsSection />
             <SidebarSeparator />
             <TransformsSection />
             <SidebarSeparator />
@@ -58,7 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    
-
-    
