@@ -2,9 +2,9 @@
 "use client";
 
 import type { User } from 'firebase/auth';
-import type { ReactNode, Dispatch, SetStateAction } from 'react';
+import type { ReactNode } from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut } from '@/lib/firebase';
+import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut, signInWithRedirect, getRedirectResult, onAuthStateChanged } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
@@ -12,6 +12,7 @@ interface AuthContextType {
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
+  isPWA: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,10 +20,38 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPWA, setIsPWA] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+    if (typeof window !== 'undefined') {
+      setIsPWA(window.matchMedia('(display-mode: standalone)').matches);
+    }
+
+    setLoading(true); // Start loading, getRedirectResult or onAuthStateChanged will set it false.
+
+    // Check for redirect result first on app load.
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result && result.user) {
+          // User signed in via redirect.
+          // onAuthStateChanged will handle setting the user and loading state.
+          toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
+        }
+        // If result is null, no redirect operation was pending.
+      })
+      .catch((error) => {
+        console.error("Error processing redirect result:", error);
+        // Avoid toast for user-cancelled redirects if applicable
+        if (error.code !== 'auth/redirect-cancelled' && error.code !== 'auth/redirect-cancelled-by-user') {
+           toast({ title: 'Login Error', description: error.message || 'Failed to process sign-in after redirect.', variant: 'destructive' });
+        }
+      });
+      // .finally(() => {
+      //  No setLoading(false) here, onAuthStateChanged handles it.
+      // });
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
     });
@@ -31,40 +60,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
-    // Call signInWithPopup immediately
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      // User state will be updated by onAuthStateChanged
-      // setLoading(true) can be set after the popup initiation if needed,
-      // but the popup itself should be triggered directly by user action.
-      setLoading(true); // Set loading after popup attempt
-      if (result.user) {
-        toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
-      }
-    } catch (error: any) {
-      console.error("Error signing in with Google: ", error);
-      // Check for specific popup blocked error
-      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-        toast({
-          title: 'Login Popup Blocked',
-          description: 'The Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.',
-          variant: 'destructive',
-        });
-      } else {
+    setLoading(true);
+    if (isPWA) {
+      try {
+        // For PWA, use redirect method
+        await signInWithRedirect(auth, googleProvider);
+        // Redirect will occur, getRedirectResult will handle the user on return
+      } catch (error: any) {
+        console.error("Error initiating sign in with redirect: ", error);
         toast({
           title: 'Login Failed',
-          description: error.message || 'Could not sign in with Google. Please try again.',
+          description: error.message || 'Could not initiate sign in with Google. Please try again.',
           variant: 'destructive',
         });
+        setLoading(false);
       }
-      setUser(null); // Ensure user is null on error
-    } finally {
-      // setLoading(false) will be handled by onAuthStateChanged or if an error occurs before that
-      // For a more immediate feedback if popup is blocked, we might set loading false here.
-      // However, onAuthStateChanged is the source of truth for user state.
-      // If an error occurs and onAuthStateChanged doesn't fire, we might need to set loading to false here.
-      if (!auth.currentUser) { // If after everything, there's still no user
-          setLoading(false);
+    } else {
+      // For regular browser, use popup method
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        // setLoading(true) was already called.
+        // onAuthStateChanged will set user and setLoading(false)
+        if (result.user) {
+          toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
+        }
+      } catch (error: any) {
+        console.error("Error signing in with Google: ", error);
+        if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+          toast({
+            title: 'Login Popup Blocked',
+            description: 'The Google Sign-In popup was blocked. Please allow popups and try again, or install the app as a PWA for a smoother experience.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Login Failed',
+            description: error.message || 'Could not sign in with Google. Please try again.',
+            variant: 'destructive',
+          });
+        }
+        setUser(null);
+        setLoading(false);
       }
     }
   };
@@ -83,12 +119,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false); // onAuthStateChanged will also set loading, but this ensures it for sign-out errors
+      setLoading(false);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOutUser }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOutUser, isPWA }}>
       {children}
     </AuthContext.Provider>
   );
