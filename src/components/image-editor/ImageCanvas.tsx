@@ -13,6 +13,7 @@ const applyCssFilters = (
 ) => {
   let filterString = '';
 
+  // Ensure all setting values are numbers and have defaults
   const baseBrightness = typeof settings.brightness === 'number' ? settings.brightness : 1;
   const baseContrast = typeof settings.contrast === 'number' ? settings.contrast : 1;
   const saturationVal = typeof settings.saturation === 'number' ? settings.saturation : 1;
@@ -23,23 +24,28 @@ const applyCssFilters = (
   let finalBrightness = baseBrightness;
   let finalContrast = baseContrast;
 
+  // Adjust brightness and contrast based on 'blacks'
   if (blacksVal !== 0) {
     finalContrast *= (1 - blacksVal * 0.5); 
     finalBrightness *= (1 + blacksVal * 0.2); 
   }
 
+  // Adjust brightness based on 'exposure'
   if (exposureVal !== 0) {
     const exposureEffect = 1 + exposureVal * 0.5; 
     finalBrightness *= exposureEffect;
   }
 
-  finalBrightness = Math.max(0.1, Math.min(3, finalBrightness));
-  finalContrast = Math.max(0.1, Math.min(3, finalContrast));
+  // Clamp final brightness and contrast to avoid extreme values
+  finalBrightness = Math.max(0.1, Math.min(3, finalBrightness)); 
+  finalContrast = Math.max(0.1, Math.min(3, finalContrast));   
+
 
   if (finalBrightness !== 1) filterString += `brightness(${finalBrightness * 100}%) `;
   if (finalContrast !== 1) filterString += `contrast(${finalContrast * 100}%) `;
   if (saturationVal !== 1) filterString += `saturate(${saturationVal * 100}%) `;
   if (hueRotateVal !== 0) filterString += `hue-rotate(${hueRotateVal}deg) `;
+
 
   if (settings.filter) {
     if (settings.filter === 'grayscale') filterString += `grayscale(100%) `;
@@ -57,7 +63,10 @@ const applyCssFilters = (
     }
   }
   
-  ctx.filter = trimmedFilterString;
+  ctx.filter = 'none'; // Explicitly clear previous filter
+  if (trimmedFilterString) { // Only apply if there are filters
+    ctx.filter = trimmedFilterString;
+  }
 };
 
 
@@ -95,6 +104,7 @@ export function ImageCanvas() {
 
     const { rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY } = settings;
 
+    // Source rectangle from original image, adjusted by cropZoom and cropOffsets
     let sWidth = originalImage.naturalWidth / cropZoom;
     let sHeight = originalImage.naturalHeight / cropZoom;
 
@@ -103,28 +113,25 @@ export function ImageCanvas() {
 
     let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
     let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
-
+    
     sWidth = Math.max(1, sWidth);
     sHeight = Math.max(1, sHeight);
     sx = Math.max(0, Math.min(sx, originalImage.naturalWidth - sWidth));
     sy = Math.max(0, Math.min(sy, originalImage.naturalHeight - sHeight));
-    
+
     if (![sx, sy, sWidth, sHeight].every(val => Number.isFinite(val) && val >= 0) || sWidth === 0 || sHeight === 0) {
       console.error("Invalid source dimensions for drawImage:", { sx, sy, sWidth, sHeight });
       return;
     }
-
-    // These are the dimensions of the content area before preview scaling
-    let contentWidth = sWidth;
-    let contentHeight = sHeight;
-
+    
+    // Calculate canvas buffer dimensions based on the source content and 90-degree rotations/flips
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
-      canvasBufferWidth = contentHeight * Math.abs(scaleY); // Use contentHeight for width if rotated
-      canvasBufferHeight = contentWidth * Math.abs(scaleX);  // Use contentWidth for height if rotated
+      canvasBufferWidth = sHeight * Math.abs(scaleY);
+      canvasBufferHeight = sWidth * Math.abs(scaleX);
     } else {
-      canvasBufferWidth = contentWidth * Math.abs(scaleX);
-      canvasBufferHeight = contentHeight * Math.abs(scaleY);
+      canvasBufferWidth = sWidth * Math.abs(scaleX);
+      canvasBufferHeight = sHeight * Math.abs(scaleY);
     }
 
     const currentScaleFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1;
@@ -132,26 +139,31 @@ export function ImageCanvas() {
     canvas.height = canvasBufferHeight * currentScaleFactor;
 
     ctx.save();
-    // Translate to center of the *actual canvas dimensions*
+    
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(scaleX, scaleY);
 
     applyCssFilters(ctx, settings);
 
-    // Draw the image to fill the (potentially preview-scaled) canvas.
-    // The source (sx, sy, sWidth, sHeight) is from the original image.
-    // The destination is scaled to fill the current canvas dimensions.
     ctx.drawImage(
       originalImage,
-      sx, sy, sWidth, sHeight, // Source rectangle from original image
-      -canvas.width / 2, -canvas.height / 2, // Destination x, y (centered in transformed context)
-      canvas.width, canvas.height           // Destination width, height (fill current canvas)
+      sx, sy, sWidth, sHeight,             // Source rectangle from original image
+      - (sWidth * currentScaleFactor) / 2, // Destination x, y (centered in transformed context)
+      - (sHeight * currentScaleFactor) / 2,
+      sWidth * currentScaleFactor,         // Destination width, height
+      sHeight * currentScaleFactor
     );
 
     ctx.filter = 'none'; 
-    // rectArgs should now use canvas.width and canvas.height as they represent the drawn area
-    const rectArgs: [number, number, number, number] = [-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height];
+    
+    const rectArgs: [number, number, number, number] = [
+      - (sWidth * currentScaleFactor) / 2, 
+      - (sHeight * currentScaleFactor) / 2, 
+      sWidth * currentScaleFactor, 
+      sHeight * currentScaleFactor
+    ];
+
 
     // Shadows (Canvas specific)
     if (settings.shadows > 0) { 
@@ -218,11 +230,14 @@ export function ImageCanvas() {
     ctx.globalCompositeOperation = 'source-over';
 
     if (settings.vignetteIntensity > 0) {
-      const centerX = 0; // Center of the transformed context
+      const centerX = 0; 
       const centerY = 0;
-      // Vignette radius should be based on the actual drawn canvas dimensions
-      const radiusX = canvas.width / 2;
-      const radiusY = canvas.height / 2;
+      
+      const vignetteCanvasWidth = sWidth * currentScaleFactor;
+      const vignetteCanvasHeight = sHeight * currentScaleFactor;
+
+      const radiusX = vignetteCanvasWidth / 2;
+      const radiusY = vignetteCanvasHeight / 2;
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
 
       const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
@@ -242,7 +257,7 @@ export function ImageCanvas() {
     }
 
     ctx.restore();
-  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]); // noisePatternRef added
+  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -272,12 +287,12 @@ export function ImageCanvas() {
             }
         }
     }
-  }, [canvasRef]); // Only depends on canvasRef to create the pattern once
+  }, [canvasRef]); 
 
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 200),
-    [drawImageImmediately, isPreviewing] // isPreviewing added here
+    [drawImageImmediately, isPreviewing] 
   );
 
   useEffect(() => {
@@ -296,7 +311,6 @@ export function ImageCanvas() {
             }
         }
     }
-  // Key dependencies for redraw: originalImage, settings, isPreviewing, drawImageImmediately
   }, [originalImage, settings, isPreviewing, drawImageImmediately, debouncedDrawImage]);
 
 
@@ -315,3 +329,4 @@ export function ImageCanvas() {
     />
   );
 }
+
