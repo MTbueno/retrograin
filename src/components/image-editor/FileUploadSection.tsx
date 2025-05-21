@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { initialImageSettings } from '@/contexts/ImageEditorContext'; // Moved import to top
 
-const JPEG_QUALITY = 0.92;
+const JPEG_QUALITY = 0.92; // This will now be used
 
 export function FileUploadSection() {
-  const { addImageObject } = useImageEditor(); // Changed from setOriginalImage and setBaseFileName
+  const { addImageObject } = useImageEditor();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -32,7 +33,7 @@ export function FileUploadSection() {
         const baseFileName = file.name.replace(/\.[^/.]+$/, "");
         
         if (file.type === 'image/jpeg') {
-          addImageObject({ imageElement: img, baseFileName, settings: initialImageSettings });
+          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } });
         } else {
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = img.naturalWidth;
@@ -41,14 +42,15 @@ export function FileUploadSection() {
 
           if (tempCtx) {
             tempCtx.drawImage(img, 0, 0);
+            // Use the JPEG_QUALITY constant here
             const jpegDataUrl = tempCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
             
             const jpegImage = new Image();
             jpegImage.onload = () => {
-              addImageObject({ imageElement: jpegImage, baseFileName, settings: initialImageSettings });
+              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings } });
               toast({
                 title: 'Image Converted',
-                description: `${file.name} was converted to JPEG for editing.`,
+                description: `${file.name} was converted to JPEG (quality: ${JPEG_QUALITY * 100}%) for editing.`,
               });
             };
             jpegImage.onerror = () => {
@@ -65,8 +67,7 @@ export function FileUploadSection() {
               description: `Could not prepare ${file.name} for JPEG conversion. Using original.`,
               variant: 'destructive',
             });
-            // Fallback to original if conversion context fails
-            addImageObject({ imageElement: img, baseFileName, settings: initialImageSettings });
+            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } });
           }
         }
       };
@@ -99,13 +100,10 @@ export function FileUploadSection() {
           description: 'You can upload a maximum of 10 images at a time.',
           variant: 'destructive',
         });
-        // Optionally, only process the first 10
-        // Array.from(files).slice(0, 10).forEach(processAndAddImage);
         return;
       }
       Array.from(files).forEach(processAndAddImage);
       
-      // Clear the file input after processing to allow re-uploading the same file(s)
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -124,7 +122,7 @@ export function FileUploadSection() {
         ref={fileInputRef}
         onChange={handleFileChange}
         accept="image/*"
-        multiple // Allow multiple files
+        multiple
         className="hidden"
       />
       <Button onClick={handleUploadClick} variant="outline" className="w-full">
@@ -135,5 +133,3 @@ export function FileUploadSection() {
     </div>
   );
 }
-// Need to import initialImageSettings if it's not globally available
-import { initialImageSettings } from '@/contexts/ImageEditorContext';
