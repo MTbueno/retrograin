@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.2"; // Updated version
+const CURRENT_PROJECT_VERSION = "alpha 0.2c"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);

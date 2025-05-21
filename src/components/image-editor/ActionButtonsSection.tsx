@@ -26,7 +26,7 @@ export function ActionButtonsSection() {
     originalImage,
     allImages,
     dispatchSettings,
-    baseFileName,
+    baseFileName, // This is for the currently active image
     getCanvasDataURL,
     generateImageDataUrlWithSettings,
     setIsPreviewing,
@@ -45,13 +45,12 @@ export function ActionButtonsSection() {
 
 
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
-    setIsConnectingOrSavingToDrive(false); // Reset connecting state
+    setIsConnectingOrSavingToDrive(false); 
 
     if (tokenResponse && tokenResponse.access_token) {
       if (window.gapi && window.gapi.client) {
         window.gapi.client.setToken({ access_token: tokenResponse.access_token });
       }
-      // Give gapi time to process the token and update its internal state
       setTimeout(() => {
         if (isDriveAuthenticated()) {
           setIsDriveAuthorized(true);
@@ -73,31 +72,48 @@ export function ActionButtonsSection() {
 
   useEffect(() => {
     let gapiAttempts = 0;
-    const tryLoadGapiAndGis = () => {
-      if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function' && typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
-        loadGapi((gapiSuccess) => {
-          setIsGapiClientInitialized(gapiSuccess);
-          if (gapiSuccess) {
+    const maxGapiAttempts = 20; // Try for 10 seconds (20 * 500ms)
+    let gisAttempts = 0;
+    const maxGisAttempts = 20;
+
+    function tryInitGapi() {
+        if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
+            loadGapi((success) => {
+                setIsGapiClientInitialized(success);
+                if (success) {
+                    tryInitGis(); // Proceed to GIS initialization
+                } else {
+                    toast({ title: 'Erro GAPI', description: 'Não foi possível carregar a biblioteca GAPI do Google.', variant: 'destructive' });
+                }
+            });
+        } else if (gapiAttempts < maxGapiAttempts) {
+            gapiAttempts++;
+            setTimeout(tryInitGapi, 500);
+        } else {
+            console.error("GAPI (Google API Client Library) não carregou a tempo.");
+            toast({ title: 'Erro GAPI', description: 'Timeout ao carregar a biblioteca GAPI.', variant: 'destructive' });
+        }
+    }
+
+    function tryInitGis() {
+        if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
             const tokenClientSuccess = initTokenClient(handleTokenResponse);
             setIsDriveSdkReady(tokenClientSuccess);
             if (tokenClientSuccess && isDriveAuthenticated()) {
               setIsDriveAuthorized(true);
+            } else if (!tokenClientSuccess) {
+                 toast({ title: 'Erro GIS', description: 'Não foi possível inicializar o cliente de token GIS.', variant: 'destructive' });
             }
-          } else {
-            setIsDriveSdkReady(false);
-          }
-        });
-      } else if (gapiAttempts < 40) { // Retry for up to 20 seconds (40 * 500ms)
-        gapiAttempts++;
-        setTimeout(tryLoadGapiAndGis, 500);
-      } else {
-        console.error("GAPI ou GIS (Google Identity Services) não carregaram a tempo.");
-        setIsGapiClientInitialized(false);
-        setIsDriveSdkReady(false);
-      }
-    };
-    tryLoadGapiAndGis();
-  }, [handleTokenResponse]);
+        } else if (gisAttempts < maxGisAttempts) {
+            gisAttempts++;
+            setTimeout(tryInitGis, 500);
+        } else {
+            console.error("GIS (Google Identity Services) não carregou a tempo.");
+            toast({ title: 'Erro GIS', description: 'Timeout ao carregar Google Identity Services.', variant: 'destructive' });
+        }
+    }
+    tryInitGapi(); // Start the GAPI loading process
+  }, [handleTokenResponse, toast]);
 
 
   const handleDriveAction = () => {
@@ -119,33 +135,34 @@ export function ActionButtonsSection() {
     }
   };
 
-  const createExifWithComment = (originalExif: any): string | null => {
+  const createExifWithComment = (originalFilteredExif: any): string | null => {
     try {
-      const newExifObj: any = { "0th": {}, "Exif": {} };
+      // Start with what was preserved (should only contain date tags), or a fresh structure.
+      // Deep clone to prevent modification of the stored exifData if it's an object.
+      const newExifObj = originalFilteredExif ? JSON.parse(JSON.stringify(originalFilteredExif)) : {};
 
-      if (originalExif) {
-        if (originalExif["0th"]) {
-          newExifObj["0th"] = { ...originalExif["0th"] };
-        }
-        if (originalExif["Exif"]) {
-          newExifObj["Exif"] = { ...originalExif["Exif"] };
-        } else {
-           newExifObj["Exif"] = {}; // Ensure Exif IFD exists for UserComment
-        }
-      } else {
-        newExifObj["Exif"] = {}; // Ensure Exif IFD exists for UserComment even if no original EXIF
+      // Ensure "Exif" IFD exists for UserComment.
+      // If originalFilteredExif was null, newExifObj is {}, so we need to create Exif IFD.
+      // If originalFilteredExif had an "Exif" IFD, it will be used.
+      // If originalFilteredExif had no "Exif" IFD, we create one.
+      if (!newExifObj["Exif"]) {
+        newExifObj["Exif"] = {};
       }
       
-      // Add UserComment
       newExifObj["Exif"][piexif.ExifIFD.UserComment] = piexif.helper.UserComment.dump("Edited in RetroGrain", "ascii");
-
-      // Clean up empty IFDs to avoid issues with piexif.dump if they are truly empty
-      if (Object.keys(newExifObj["0th"]).length === 0) delete newExifObj["0th"];
-      if (Object.keys(newExifObj["Exif"]).length === 0) delete newExifObj["Exif"];
       
-      if (Object.keys(newExifObj).length === 0) return null; // No data to dump
+      // Clean up 0th IFD if it's empty and wasn't part of originalFilteredExif (or became empty)
+      if (newExifObj["0th"] && Object.keys(newExifObj["0th"]).length === 0) {
+        delete newExifObj["0th"];
+      }
+      // If after all operations, the object is effectively empty (e.g. only contained empty IFDs initially, and now only UserComment)
+      // piexif.dump will handle it. An object like {"Exif": {"UserComment": "..."}} is valid.
+      // piexif.dump on {} or {"0th":{}, "Exif":{}} (if UserComment somehow wasn't added) returns "".
+      const exifStr = piexif.dump(newExifObj);
+      
+      // Return null if dump results in an empty string, as piexif.insert might not like an empty string.
+      return exifStr === "" ? null : exifStr;
 
-      return piexif.dump(newExifObj);
     } catch (error) {
       console.warn("Error creating EXIF data with comment:", error);
       return null;
@@ -170,7 +187,7 @@ export function ActionButtonsSection() {
 
         if (currentImageURI) {
             const exifBytes = createExifWithComment(activeImgObject.exifData);
-            if (exifBytes) {
+            if (exifBytes && typeof exifBytes === 'string' && exifBytes.length > 0) {
                 try {
                     currentImageURI = piexif.insert(exifBytes, currentImageURI);
                 } catch (exifError) {
@@ -235,20 +252,23 @@ export function ActionButtonsSection() {
 
   const handleDownloadInternal = async () => {
     if (allImages.length === 0) return;
-    setIsPreviewing(false);
+    setIsPreviewing(false); // Ensure full quality for download
 
     if (allImages.length === 1 && activeImageId) {
       const activeImgObject = allImages.find(img => img.id === activeImageId);
       let dataURL = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
+      
       if (dataURL && activeImgObject) {
         const exifBytes = createExifWithComment(activeImgObject.exifData);
-        if (exifBytes) {
+        if (exifBytes && typeof exifBytes === 'string' && exifBytes.length > 0) { // Check if exifBytes is a non-empty string
             try {
               dataURL = piexif.insert(exifBytes, dataURL);
             } catch (exifError: any) {
                 console.warn("Could not insert EXIF for single download:", exifError);
                 toast({ title: 'Aviso EXIF', description: `Não foi possível reanexar dados EXIF: ${exifError.message || 'Erro desconhecido'}.`, variant: 'default' });
             }
+        } else if (exifBytes === null || exifBytes === "") {
+             console.log("No valid EXIF data to insert for single download or EXIF data was empty.");
         }
       }
 
@@ -263,7 +283,7 @@ export function ActionButtonsSection() {
       } else {
         toast({ title: 'Erro no Download', description: 'Não foi possível gerar a imagem para download.', variant: 'destructive' });
       }
-    } else {
+    } else { // Multiple images, create a ZIP
       const zip = new JSZip();
       toast({ title: 'Preparando ZIP...', description: 'Gerando imagens, por favor aguarde.' });
 
@@ -271,7 +291,7 @@ export function ActionButtonsSection() {
         let dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY);
         if (dataURL) {
           const exifBytes = createExifWithComment(imgObject.exifData);
-          if (exifBytes) {
+          if (exifBytes && typeof exifBytes === 'string' && exifBytes.length > 0) {
             try {
               dataURL = piexif.insert(exifBytes, dataURL);
             } catch (exifError: any) {

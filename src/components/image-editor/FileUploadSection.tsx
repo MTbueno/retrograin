@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { initialImageSettings } from '@/contexts/ImageEditorContext';
 import piexif from 'piexifjs';
 
-const JPEG_QUALITY = 0.92;
+const JPEG_QUALITY = 0.92; // Quality for non-JPEG to JPEG conversion
 
 export function FileUploadSection() {
   const { addImageObject } = useImageEditor();
@@ -43,25 +43,35 @@ export function FileUploadSection() {
       try {
         if (file.type === "image/jpeg" || file.type === "image/jpg") {
             const fullExifObj = piexif.load(dataURL);
-            preservedExifData = { "0th": {}, "Exif": {} }; // Initialize with base IFDs
+            const tempExif: any = {}; // Start with an empty object to store only relevant tags
 
+            // Preserve DateTime from 0th IFD if it exists
             if (fullExifObj["0th"] && fullExifObj["0th"][piexif.ImageIFD.DateTime]) {
-              (preservedExifData as any)["0th"][piexif.ImageIFD.DateTime] = fullExifObj["0th"][piexif.ImageIFD.DateTime];
+              if (!tempExif["0th"]) tempExif["0th"] = {};
+              tempExif["0th"][piexif.ImageIFD.DateTime] = fullExifObj["0th"][piexif.ImageIFD.DateTime];
             }
+
+            // Preserve DateTimeOriginal and DateTimeDigitized from Exif IFD if they exist
             if (fullExifObj["Exif"]) {
+              let exifIfdHasData = false;
               if (fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal]) {
-                (preservedExifData as any)["Exif"][piexif.ExifIFD.DateTimeOriginal] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal];
+                if (!tempExif["Exif"]) tempExif["Exif"] = {};
+                tempExif["Exif"][piexif.ExifIFD.DateTimeOriginal] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal];
+                exifIfdHasData = true;
               }
               if (fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized]) {
-                (preservedExifData as any)["Exif"][piexif.ExifIFD.DateTimeDigitized] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized];
+                if (!tempExif["Exif"]) tempExif["Exif"] = {}; // Ensure Exif IFD exists
+                tempExif["Exif"][piexif.ExifIFD.DateTimeDigitized] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized];
+                exifIfdHasData = true;
               }
             }
-            // If no relevant date tags were found, preservedExifData will have empty "0th" or "Exif" IFDs.
-            // We can clean them up if they are empty before storing, or let piexif.dump handle it.
-            if (Object.keys((preservedExifData as any)["0th"]).length === 0) delete (preservedExifData as any)["0th"];
-            if (Object.keys((preservedExifData as any)["Exif"]).length === 0) delete (preservedExifData as any)["Exif"];
-            if (Object.keys(preservedExifData).length === 0) preservedExifData = null;
-
+            
+            // If tempExif has any top-level keys (0th or Exif), then assign it. Otherwise, null.
+            if (Object.keys(tempExif).length > 0) {
+                preservedExifData = tempExif;
+            } else {
+                preservedExifData = null;
+            }
         }
       } catch (exifError) {
         console.warn(`Could not load or process EXIF data for ${file.name}:`, exifError);
@@ -85,9 +95,6 @@ export function FileUploadSection() {
             tempCtx.drawImage(img, 0, 0);
             let jpegDataUrl = tempCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
             
-            // Non-JPEGs typically don't have EXIF, so preservedExifData would be null here.
-            // If by some chance a non-JPEG had EXIF (very rare), piexif wouldn't be able to insert it into a new JPEG this way.
-            
             const jpegImage = new Image();
             jpegImage.onload = () => {
               addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings }, exifData: null }); // EXIF from non-JPEG is not preserved
@@ -110,7 +117,6 @@ export function FileUploadSection() {
               description: `Could not prepare ${file.name} for JPEG conversion. Using original.`,
               variant: 'destructive',
             });
-            // If conversion fails, add original image (EXIF might be lost by browser for non-JPEGs anyway)
             addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData: null });
           }
         }
@@ -164,7 +170,7 @@ export function FileUploadSection() {
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif" // HEIC/HEIF might not have EXIF readable this way
         multiple
         className="hidden"
       />
