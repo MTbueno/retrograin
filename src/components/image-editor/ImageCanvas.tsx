@@ -13,7 +13,6 @@ const applyCssFilters = (
 ) => {
   let filterString = '';
 
-  // Initialize base values, ensuring they are numbers
   const baseBrightness = typeof settings.brightness === 'number' ? settings.brightness : 1;
   const baseContrast = typeof settings.contrast === 'number' ? settings.contrast : 1;
   const saturationVal = typeof settings.saturation === 'number' ? settings.saturation : 1;
@@ -24,19 +23,16 @@ const applyCssFilters = (
   let finalBrightness = baseBrightness;
   let finalContrast = baseContrast;
 
-  // Apply Blacks effect by modifying brightness and contrast
   if (blacksVal !== 0) {
-    finalContrast *= (1 - blacksVal * 0.5); // More negative blacks = more contrast
-    finalBrightness *= (1 + blacksVal * 0.2); // More positive blacks = brighter overall
+    finalContrast *= (1 - blacksVal * 0.5); 
+    finalBrightness *= (1 + blacksVal * 0.2); 
   }
 
-  // Apply Exposure effect to finalBrightness
   if (exposureVal !== 0) {
-    const exposureEffect = 1 + exposureVal * 0.5; // exposureVal is -0.5 to 0.5 -> effect 0.75 to 1.25
+    const exposureEffect = 1 + exposureVal * 0.5; 
     finalBrightness *= exposureEffect;
   }
 
-  // Clamp final values to avoid extreme or inverted effects
   finalBrightness = Math.max(0.1, Math.min(3, finalBrightness));
   finalContrast = Math.max(0.1, Math.min(3, finalContrast));
 
@@ -50,7 +46,18 @@ const applyCssFilters = (
     if (settings.filter === 'sepia') filterString += `sepia(100%) `;
     if (settings.filter === 'invert') filterString += `invert(100%) `;
   }
-  ctx.filter = filterString.trim();
+
+  const trimmedFilterString = filterString.trim();
+  
+  // Safari specific debug log
+  if (typeof navigator !== 'undefined') {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (isSafari) {
+      console.log('[Safari Debug] CSS Filter String:', trimmedFilterString);
+    }
+  }
+  
+  ctx.filter = trimmedFilterString;
 };
 
 
@@ -68,7 +75,7 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 
 const PREVIEW_SCALE_FACTOR = 0.5;
 const NOISE_CANVAS_SIZE = 100;
-const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; // Combined previous factors
+const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6;
 
 export function ImageCanvas() {
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
@@ -107,13 +114,14 @@ export function ImageCanvas() {
       return;
     }
 
+    // These are the dimensions of the content area before preview scaling
     let contentWidth = sWidth;
     let contentHeight = sHeight;
 
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
-      canvasBufferWidth = contentHeight * Math.abs(scaleY);
-      canvasBufferHeight = contentWidth * Math.abs(scaleX);
+      canvasBufferWidth = contentHeight * Math.abs(scaleY); // Use contentHeight for width if rotated
+      canvasBufferHeight = contentWidth * Math.abs(scaleX);  // Use contentWidth for height if rotated
     } else {
       canvasBufferWidth = contentWidth * Math.abs(scaleX);
       canvasBufferHeight = contentHeight * Math.abs(scaleY);
@@ -124,34 +132,36 @@ export function ImageCanvas() {
     canvas.height = canvasBufferHeight * currentScaleFactor;
 
     ctx.save();
+    // Translate to center of the *actual canvas dimensions*
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(scaleX, scaleY);
 
-    const finalDrawWidth = contentWidth; // This is the size of the content before currentScaleFactor
-    const finalDrawHeight = contentHeight;
-
     applyCssFilters(ctx, settings);
 
+    // Draw the image to fill the (potentially preview-scaled) canvas.
+    // The source (sx, sy, sWidth, sHeight) is from the original image.
+    // The destination is scaled to fill the current canvas dimensions.
     ctx.drawImage(
       originalImage,
-      sx, sy, sWidth, sHeight,
-      -finalDrawWidth / 2, -finalDrawHeight / 2,
-      finalDrawWidth, finalDrawHeight
+      sx, sy, sWidth, sHeight, // Source rectangle from original image
+      -canvas.width / 2, -canvas.height / 2, // Destination x, y (centered in transformed context)
+      canvas.width, canvas.height           // Destination width, height (fill current canvas)
     );
 
     ctx.filter = 'none'; 
-    const rectArgs: [number, number, number, number] = [-finalDrawWidth / 2, -finalDrawHeight / 2, finalDrawWidth, finalDrawHeight];
+    // rectArgs should now use canvas.width and canvas.height as they represent the drawn area
+    const rectArgs: [number, number, number, number] = [-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height];
 
     // Shadows (Canvas specific)
-    if (settings.shadows > 0) { // Brighten shadows
+    if (settings.shadows > 0) { 
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.175 * 0.5; // Reduced effect
+      ctx.globalAlpha = settings.shadows * 0.175 * 0.5; 
       ctx.fillStyle = 'rgb(128, 128, 128)';
       ctx.fillRect(...rectArgs);
-    } else if (settings.shadows < 0) { // Darken shadows
+    } else if (settings.shadows < 0) { 
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.1 * 0.5; // Reduced effect
+      ctx.globalAlpha = Math.abs(settings.shadows) * 0.1 * 0.5; 
       ctx.fillStyle = 'rgb(50, 50, 50)';
       ctx.fillRect(...rectArgs);
     }
@@ -159,14 +169,14 @@ export function ImageCanvas() {
     ctx.globalCompositeOperation = 'source-over';
 
     // Highlights (Canvas specific)
-    if (settings.highlights < 0) { // Darken highlights
+    if (settings.highlights < 0) { 
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.175 * 0.5; // Reduced effect
+      ctx.globalAlpha = Math.abs(settings.highlights) * 0.175 * 0.5; 
       ctx.fillStyle = 'rgb(128, 128, 128)';
       ctx.fillRect(...rectArgs);
-    } else if (settings.highlights > 0) { // Brighten highlights
+    } else if (settings.highlights > 0) { 
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.1 * 0.5; // Reduced effect
+      ctx.globalAlpha = settings.highlights * 0.1 * 0.5; 
       ctx.fillStyle = 'rgb(200, 200, 200)';
       ctx.fillRect(...rectArgs);
     }
@@ -177,9 +187,9 @@ export function ImageCanvas() {
       const temp = settings.colorTemperature / 100;
       const alpha = Math.abs(temp) * 0.2;
       if (temp > 0) {
-        ctx.fillStyle = `rgba(255, 165, 0, ${alpha})`; // Warmer
+        ctx.fillStyle = `rgba(255, 165, 0, ${alpha})`; 
       } else {
-        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`; // Cooler
+        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`; 
       }
       ctx.globalCompositeOperation = 'overlay';
       ctx.fillRect(...rectArgs);
@@ -195,7 +205,7 @@ export function ImageCanvas() {
 
           ctx.globalCompositeOperation = blendMode;
           ctx.fillStyle = finalColorHex;
-          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR; // Use scaled intensity
+          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR; 
           ctx.fillRect(...rectArgs);
         }
       }
@@ -208,10 +218,11 @@ export function ImageCanvas() {
     ctx.globalCompositeOperation = 'source-over';
 
     if (settings.vignetteIntensity > 0) {
-      const centerX = 0;
+      const centerX = 0; // Center of the transformed context
       const centerY = 0;
-      const radiusX = finalDrawWidth / 2;
-      const radiusY = finalDrawHeight / 2;
+      // Vignette radius should be based on the actual drawn canvas dimensions
+      const radiusX = canvas.width / 2;
+      const radiusY = canvas.height / 2;
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
 
       const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
@@ -231,7 +242,7 @@ export function ImageCanvas() {
     }
 
     ctx.restore();
-  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]);
+  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]); // noisePatternRef added
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -261,12 +272,12 @@ export function ImageCanvas() {
             }
         }
     }
-  }, [canvasRef]);
+  }, [canvasRef]); // Only depends on canvasRef to create the pattern once
 
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 200),
-    [drawImageImmediately, isPreviewing]
+    [drawImageImmediately, isPreviewing] // isPreviewing added here
   );
 
   useEffect(() => {
@@ -285,6 +296,7 @@ export function ImageCanvas() {
             }
         }
     }
+  // Key dependencies for redraw: originalImage, settings, isPreviewing, drawImageImmediately
   }, [originalImage, settings, isPreviewing, drawImageImmediately, debouncedDrawImage]);
 
 
