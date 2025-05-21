@@ -9,7 +9,7 @@ export interface ImageSettings {
   brightness: number;
   contrast: number;
   saturation: number;
-  vibrance: number;
+  vibrance: number; 
   exposure: number;
   highlights: number;
   shadows: number;
@@ -29,7 +29,7 @@ export interface ImageSettings {
   cropZoom: number;
   cropOffsetX: number;
   cropOffsetY: number;
-  hueRotate: number; 
+  hueRotate: number;
   filter: string | null;
 }
 
@@ -45,10 +45,10 @@ export const initialImageSettings: ImageSettings = {
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
-  tintShadowsColor: '#808080', // Default to a neutral gray
+  tintShadowsColor: '#808080',
   tintShadowsIntensity: 0,
   tintShadowsSaturation: 1,
-  tintHighlightsColor: '#808080', // Default to a neutral gray
+  tintHighlightsColor: '#808080',
   tintHighlightsIntensity: 0,
   tintHighlightsSaturation: 1,
   rotation: 0,
@@ -67,7 +67,6 @@ export interface ImageObject {
   baseFileName: string;
   settings: ImageSettings;
   thumbnailDataUrl: string;
-  // No exifData here as per previous changes
 }
 
 export type SettingsAction =
@@ -151,7 +150,7 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetX: Math.max(-1, Math.min(1, action.payload)) };
     case 'SET_CROP_OFFSET_Y':
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
-    case 'RESET_CROP_AND_ANGLE': // Should be just RESET_CROP now
+    case 'RESET_CROP_AND_ANGLE': 
       return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
     case 'SET_HUE_ROTATE':
       return { ...state, hueRotate: action.payload };
@@ -167,7 +166,7 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
 }
 
 export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings: ImageSettings) => {
-  ctx.filter = 'none'; // Reset filter before applying new ones
+  ctx.filter = 'none';
   const filters: string[] = [];
 
   let finalBrightness = settings.brightness;
@@ -179,24 +178,20 @@ export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings
   let filterContrast = settings.contrast;
 
   if (settings.blacks !== 0) {
-    finalBrightness += settings.blacks * 0.05; // Lifting blacks slightly increases brightness
-    filterContrast *= (1 - Math.abs(settings.blacks) * 0.1); // Lifting blacks slightly reduces contrast, crushing increases it
+    finalBrightness += settings.blacks * 0.05; 
+    filterContrast *= (1 - Math.abs(settings.blacks) * 0.1); 
   }
   
-  // Apply vibrance
   if (settings.vibrance > 0) {
-    filterSaturation = settings.saturation * (1 + settings.vibrance * 0.5); // Increase saturation more for less saturated colors (approximated)
-    filterContrast = filterContrast * (1 + settings.vibrance * 0.2); // Slightly increase contrast
+    filterSaturation = settings.saturation * (1 + settings.vibrance * 0.5);
+    filterContrast = filterContrast * (1 + settings.vibrance * 0.2); 
   } else if (settings.vibrance < 0) {
-    filterSaturation = settings.saturation * (1 + settings.vibrance * 0.8); // More aggressive desaturation
+    filterSaturation = settings.saturation * (1 + settings.vibrance * 0.8); 
   }
 
-
-  // Clamp values to prevent extreme results that might break filters
-  filterSaturation = Math.max(0, Math.min(3, filterSaturation)); // Example clamp: 0% to 300%
-  filterContrast = Math.max(0, Math.min(3, filterContrast));   // Example clamp: 0% to 300%
-  finalBrightness = Math.max(0, Math.min(3, finalBrightness)); // Example clamp: 0% to 300%
-
+  filterSaturation = Math.max(0, Math.min(3, filterSaturation)); 
+  filterContrast = Math.max(0, Math.min(3, filterContrast));   
+  finalBrightness = Math.max(0, Math.min(3, finalBrightness)); 
 
   if (Math.abs(finalBrightness - 1) > 0.001) filters.push(`brightness(${finalBrightness * 100}%)`);
   if (Math.abs(filterContrast - 1) > 0.001) filters.push(`contrast(${filterContrast * 100}%)`);
@@ -208,13 +203,10 @@ export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings
   const trimmedFilterString = filters.join(' ').trim();
   if (trimmedFilterString) {
     ctx.filter = trimmedFilterString;
-    // console.log("[Safari Debug] CSS Filter String:", trimmedFilterString); // Kept for debugging if needed
   }
 };
 
-// Constants for canvas effects - can be tuned
-const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; // Increased for more intensity
-const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; // Factor for tint intensity
+const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
 
 const drawImageWithSettingsToContext = (
   _ctx: CanvasRenderingContext2D,
@@ -236,7 +228,6 @@ const drawImageWithSettingsToContext = (
       vignetteIntensity, grainIntensity
     } = imageSettings;
 
-    // Calculate source rectangle from original image based on crop settings
     let sWidth = imageToDraw.naturalWidth / cropZoom;
     let sHeight = imageToDraw.naturalHeight / cropZoom;
     const maxPanX = imageToDraw.naturalWidth - sWidth;
@@ -244,36 +235,31 @@ const drawImageWithSettingsToContext = (
     let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
     let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
 
-    // Ensure source dimensions are valid and positive
     sWidth = Math.max(1, Math.round(sWidth));
     sHeight = Math.max(1, Math.round(sHeight));
     sx = Math.max(0, Math.min(Math.round(sx), imageToDraw.naturalWidth - sWidth));
     sy = Math.max(0, Math.min(Math.round(sy), imageToDraw.naturalHeight - sHeight));
     
-    // Apply transformations (translate, rotate, scale for flips)
     _ctx.translate(Math.round(targetCanvasWidth / 2), Math.round(targetCanvasHeight / 2));
     if (rotation !== 0) _ctx.rotate((rotation * Math.PI) / 180);
     if (scaleX !== 1 || scaleY !== 1) _ctx.scale(scaleX, scaleY);
 
-    // Destination draw dimensions. If rotated by 90/270, these are swapped relative to canvas buffer.
     const destDrawWidth = Math.round((rotation === 90 || rotation === 270) ? targetCanvasHeight : targetCanvasWidth);
     const destDrawHeight = Math.round((rotation === 90 || rotation === 270) ? targetCanvasWidth : targetCanvasHeight);
     
-    // Apply CSS-like filters first
+    _ctx.filter = 'none';
     applyCssFiltersToContext(_ctx, imageSettings);
     
-    // Draw the cropped portion of the original image
-    // The drawing is centered on the (now transformed) canvas origin
     _ctx.drawImage(
       imageToDraw,
-      sx, sy, sWidth, sHeight, // Source rectangle from original image
-      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight // Destination rectangle
+      sx, sy, sWidth, sHeight, 
+      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight 
     );
 
-    _ctx.filter = 'none'; // Reset CSS filter before applying canvas-based effects
+    _ctx.filter = 'none'; 
 
-    // Rectangle for applying overlay effects, matching the drawn image area
     const effectRectArgs: [number, number, number, number] = [ Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight ];
+    const TINT_EFFECT_SCALING_FACTOR = 0.6; // Increased strength
 
     const applyBlendEffect = (
         ctxForBlend: CanvasRenderingContext2D,
@@ -282,40 +268,37 @@ const drawImageWithSettingsToContext = (
         alpha: number,
         compositeOperation: GlobalCompositeOperation
       ) => {
-      if (alpha > 0.001) { // Only apply if alpha is meaningful
+      if (alpha > 0.001) { 
         ctxForBlend.globalCompositeOperation = compositeOperation;
         ctxForBlend.fillStyle = color;
         ctxForBlend.globalAlpha = alpha;
         ctxForBlend.fillRect(...rectArgs);
-        ctxForBlend.globalAlpha = 1.0; // Reset alpha
-        ctxForBlend.globalCompositeOperation = 'source-over'; // Reset composite operation
+        ctxForBlend.globalAlpha = 1.0; 
+        ctxForBlend.globalCompositeOperation = 'source-over'; 
       }
     };
     
-    // Shadows & Highlights (Canvas direct manipulation)
     if (Math.abs(shadows) > 0.001) {
       const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
-      if (shadows > 0) applyBlendEffect(_ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen'); // Lighten shadows
-      else applyBlendEffect(_ctx, effectRectArgs, 'rgb(50,50,50)', shadowAlpha, 'multiply'); // Darken shadows
+      if (shadows > 0) applyBlendEffect(_ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen'); 
+      else applyBlendEffect(_ctx, effectRectArgs, 'rgb(50,50,50)', shadowAlpha, 'multiply'); 
     }
 
     if (Math.abs(highlights) > 0.001) {
       const highlightAlpha = Math.abs(highlights) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
-      if (highlights < 0) applyBlendEffect(_ctx, effectRectArgs, 'rgb(128,128,128)', highlightAlpha, 'multiply'); // Darken highlights
-      else applyBlendEffect(_ctx, effectRectArgs, 'rgb(200,200,200)', highlightAlpha, 'screen'); // Brighten highlights
+      if (highlights < 0) applyBlendEffect(_ctx, effectRectArgs, 'rgb(128,128,128)', highlightAlpha, 'multiply'); 
+      else applyBlendEffect(_ctx, effectRectArgs, 'rgb(200,200,200)', highlightAlpha, 'screen'); 
     }
     
-    // Color Temperature
     if (Math.abs(colorTemperature) > 0.001) {
-      const temp = colorTemperature / 100; // Normalize to -1 to 1 range
-      const alpha = Math.abs(temp) * 0.1; // Max 10% opacity
-      const color = temp > 0 ? `rgba(255, 185, 70, ${alpha})` : `rgba(100, 150, 255, ${alpha})`; // Orange for warm, Blue for cool
-      applyBlendEffect(_ctx, effectRectArgs, color, 1, 'overlay'); // Use alpha within the color string itself for this effect
+      const temp = colorTemperature / 100; 
+      const alpha = Math.abs(temp) * 0.1; 
+      const color = temp > 0 ? `rgba(255, 185, 70, ${alpha})` : `rgba(100, 150, 255, ${alpha})`; 
+      applyBlendEffect(_ctx, effectRectArgs, color, 1, 'overlay'); 
     }
 
-    // Tinting
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
-      if (intensity > 0.001 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') {
+      if (intensity > 0.001 && baseColorHex && baseColorHex !== '') { // Removed #000000 check
         const rgbColor = hexToRgb(baseColorHex);
         if (rgbColor) {
           const saturatedRgb = desaturateRgb(rgbColor, saturationFactor);
@@ -324,27 +307,23 @@ const drawImageWithSettingsToContext = (
         }
       }
     };
-    // Corrected Tint application order/modes if necessary (based on "kkkkkk" bug discovery)
-    applyTintWithSaturation(tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation, 'color-dodge'); // Affects highlights with dodge, shadows with burn
+    applyTintWithSaturation(tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation, 'color-dodge'); 
     applyTintWithSaturation(tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation, 'color-burn');
     
-    // Vignette
     if (vignetteIntensity > 0.001) {
-      const centerX = 0; // Since we translated to center
+      const centerX = 0; 
       const centerY = 0;
       const radiusX = destDrawWidth / 2;
       const radiusY = destDrawHeight / 2;
-      // Calculate outer radius based on the potentially rotated and flipped drawing dimensions
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
       
       const gradient = _ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
       gradient.addColorStop(0, `rgba(0,0,0,0)`);
-      gradient.addColorStop(1, `rgba(0,0,0,${vignetteIntensity * 0.7})`); // Max 70% black vignette
+      gradient.addColorStop(1, `rgba(0,0,0,${vignetteIntensity * 0.7})`); 
       _ctx.fillStyle = gradient;
       _ctx.fillRect(...effectRectArgs);
     }
 
-    // Grain - uses noiseImageData
     if (grainIntensity > 0.001 && noiseImageData) {
         const tempNoisePatternCanvas = document.createElement('canvas');
         tempNoisePatternCanvas.width = noiseImageData.width;
@@ -355,12 +334,12 @@ const drawImageWithSettingsToContext = (
             tempNoiseCtx.putImageData(noiseImageData, 0, 0);
             const grainPattern = _ctx.createPattern(tempNoisePatternCanvas, 'repeat');
             if (grainPattern) {
-                _ctx.save(); // Save context before applying grain
+                _ctx.save(); 
                 _ctx.fillStyle = grainPattern;
-                _ctx.globalAlpha = grainIntensity * 1.0; // Increased intensity for export
+                _ctx.globalAlpha = grainIntensity * 1.0; 
                 _ctx.globalCompositeOperation = 'overlay';
                 _ctx.fillRect(...effectRectArgs); 
-                _ctx.restore(); // Restore context after grain
+                _ctx.restore(); 
             } else {
                 console.warn("Could not create grain pattern for export/save.");
             }
@@ -369,7 +348,7 @@ const drawImageWithSettingsToContext = (
         }
     }
 
-    _ctx.restore(); // Restore from the initial save (after clearRect)
+    _ctx.restore(); 
 };
 
 interface ImageEditorContextType {
@@ -383,7 +362,7 @@ interface ImageEditorContextType {
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
   canvasRef: RefObject<HTMLCanvasElement>;
-  noiseImageDataRef: RefObject<ImageData | null>; // Stores the ImageData for noise
+  noiseImageDataRef: RefObject<ImageData | null>; 
   getCanvasDataURL: (type?: string, quality?: number)
     => string | null;
   generateImageDataUrlWithSettings: (imageElement: HTMLImageElement, settings: ImageSettings, type?: string, quality?: number)
@@ -398,7 +377,6 @@ interface ImageEditorContextType {
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
 
-// Function to generate thumbnails
 const generateThumbnail = (imageElement: HTMLImageElement): string => {
   const thumbCanvas = document.createElement('canvas');
   const thumbCtx = thumbCanvas.getContext('2d');
@@ -406,9 +384,8 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
   const MAX_THUMB_HEIGHT = 80;
   let { naturalWidth: width, naturalHeight: height } = imageElement;
 
-  if (!thumbCtx) return ''; // Should not happen
+  if (!thumbCtx) return ''; 
 
-  // Calculate thumbnail dimensions maintaining aspect ratio
   if (width > height) {
     if (width > MAX_THUMB_WIDTH) {
       height = Math.round((height * MAX_THUMB_WIDTH) / width);
@@ -423,24 +400,22 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
   thumbCanvas.width = width;
   thumbCanvas.height = height;
   thumbCtx.drawImage(imageElement, 0, 0, width, height);
-  return thumbCanvas.toDataURL('image/jpeg', 0.8); // Use JPEG for smaller thumbnail size
+  return thumbCanvas.toDataURL('image/jpeg', 0.8); 
 };
 
 export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [allImages, setAllImages] = useState<ImageObject[]>([]);
   const [activeImageId, setActiveImageIdInternal] = useState<string | null>(null);
   
-  // These will now primarily reflect the active image's state
   const [currentActiveImageElement, setCurrentActiveImageElement] = useState<HTMLImageElement | null>(null);
   const [currentBaseFileName, setCurrentBaseFileName] = useState<string>('retrograin_image');
   const [currentSettings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
 
   const [isPreviewing, setIsPreviewing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const noiseImageDataRef = useRef<ImageData | null>(null); // Changed from noiseSourceCanvasRef
+  const noiseImageDataRef = useRef<ImageData | null>(null); 
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
 
-  // Effect to update allImages when currentSettings (of the active image) change
   useEffect(() => {
     if (activeImageId && currentSettings) {
       setAllImages(prevImages =>
@@ -451,26 +426,24 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [currentSettings, activeImageId]);
 
-
   const addImageObject = useCallback((imageData: Omit<ImageObject, 'id' | 'thumbnailDataUrl'>) => {
     const newId = Date.now().toString() + Math.random().toString(36).substring(2, 15);
     const thumbnailDataUrl = generateThumbnail(imageData.imageElement);
     const newImageObject: ImageObject = {
       imageElement: imageData.imageElement,
       baseFileName: imageData.baseFileName,
-      settings: { ...initialImageSettings, ...(imageData.settings || {}) }, // Apply initial settings, allow override
+      settings: { ...initialImageSettings, ...(imageData.settings || {}) }, 
       id: newId,
       thumbnailDataUrl,
     };
     setAllImages(prev => [...prev, newImageObject]);
-    setActiveImageIdInternal(newId); // Automatically make the new image active
+    setActiveImageIdInternal(newId); 
   }, []);
 
   const removeImage = useCallback((id: string) => {
     setAllImages(prev => {
       const remainingImages = prev.filter(img => img.id !== id);
-      if (activeImageId === id) { // If the active image is removed
-        // Set the first of the remaining images as active, or null if no images left
+      if (activeImageId === id) { 
         setActiveImageIdInternal(remainingImages.length > 0 ? remainingImages[0].id : null);
       }
       return remainingImages;
@@ -486,33 +459,27 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         setCurrentBaseFileName(imageObj.baseFileName);
         dispatchSettings({ type: 'LOAD_SETTINGS', payload: imageObj.settings });
       }
-    } else { // No image is active (e.g., all images removed)
+    } else { 
       setCurrentActiveImageElement(null);
-      setCurrentBaseFileName('retrograin_image'); // Reset base file name
-      dispatchSettings({ type: 'RESET_SETTINGS' }); // Reset settings to initial
+      setCurrentBaseFileName('retrograin_image'); 
+      dispatchSettings({ type: 'RESET_SETTINGS' }); 
     }
-  }, [allImages]); // Dependency on allImages is important here
+  }, [allImages]); 
 
-  // Effect to set an active image if one isn't set and there are images available
   useEffect(() => {
     if (allImages.length > 0 && !activeImageId) {
       setActiveImageId(allImages[0].id);
     }
   }, [allImages, activeImageId, setActiveImageId]);
 
-
   const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality: number = 0.92) => {
     const canvas = canvasRef.current;
     if (!canvas || !currentActiveImageElement) return null;
 
-    // Use an offscreen canvas for generating the data URL to ensure full resolution
     const offscreenCanvas = document.createElement('canvas');
     const imageToDraw = currentActiveImageElement;
     const settingsToApply = currentSettings;
 
-    // Calculate dimensions for the offscreen canvas based on the cropped original,
-    // considering 90/270deg rotations for canvas buffer dimensions.
-    // ScaleX/Y (flips) do not affect the buffer dimensions, only the drawing orientation.
     let sWidthFull = imageToDraw.naturalWidth / settingsToApply.cropZoom;
     let sHeightFull = imageToDraw.naturalHeight / settingsToApply.cropZoom;
 
@@ -525,7 +492,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         canvasBufferHeightFull = sHeightFull;
     }
     
-    // Ensure positive dimensions
     canvasBufferWidthFull = Math.abs(Math.round(canvasBufferWidthFull));
     canvasBufferHeightFull = Math.abs(Math.round(canvasBufferHeightFull));
 
@@ -535,11 +501,10 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
 
-    // Draw image with all settings to the offscreen canvas
     drawImageWithSettingsToContext(ctx, imageToDraw, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
     return offscreenCanvas.toDataURL(type, quality);
 
-  }, [currentActiveImageElement, currentSettings, noiseImageDataRef]); // Added noiseImageDataRef
+  }, [currentActiveImageElement, currentSettings, noiseImageDataRef]); 
 
   const copyActiveSettings = useCallback(() => {
     if (activeImageId) {
@@ -553,7 +518,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const pasteSettingsToActiveImage = useCallback(() => {
     if (activeImageId && copiedSettings) {
       dispatchSettings({ type: 'LOAD_SETTINGS', payload: { ...copiedSettings } });
-      // The useEffect that watches currentSettings & activeImageId will save this to allImages
     }
   }, [activeImageId, copiedSettings]);
 
@@ -561,17 +525,15 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     imageElement: HTMLImageElement,
     settingsToApply: ImageSettings,
     type: string = 'image/jpeg',
-    quality: number = 0.92 // Default JPEG quality
+    quality: number = 0.92 
   ): Promise<string | null> => {
     return new Promise((resolve) => {
       const offscreenCanvas = document.createElement('canvas');
       
-      // Calculate dimensions based on cropZoom and natural dimensions
       let sWidthFull = imageElement.naturalWidth / settingsToApply.cropZoom;
       let sHeightFull = imageElement.naturalHeight / settingsToApply.cropZoom;
 
       let canvasBufferWidthFull, canvasBufferHeightFull;
-      // Adjust canvas buffer dimensions for 90/270 degree rotations
       if (settingsToApply.rotation === 90 || settingsToApply.rotation === 270) {
           canvasBufferWidthFull = sHeightFull;
           canvasBufferHeightFull = sWidthFull;
@@ -580,7 +542,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
           canvasBufferHeightFull = sHeightFull;
       }
 
-      // Ensure positive dimensions
       canvasBufferWidthFull = Math.abs(Math.round(canvasBufferWidthFull));
       canvasBufferHeightFull = Math.abs(Math.round(canvasBufferHeightFull));
 
@@ -596,7 +557,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       drawImageWithSettingsToContext(ctx, imageElement, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
       resolve(offscreenCanvas.toDataURL(type, quality));
     });
-  }, [noiseImageDataRef]); // Added noiseImageDataRef
+  }, [noiseImageDataRef]); 
 
 
   return (
@@ -612,7 +573,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         removeImage,
         setActiveImageId,
         canvasRef,
-        noiseImageDataRef, // Changed name from noiseSourceCanvasRef
+        noiseImageDataRef, 
         getCanvasDataURL,
         generateImageDataUrlWithSettings,
         isPreviewing,
@@ -620,7 +581,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         copiedSettings,
         copyActiveSettings,
         pasteSettingsToActiveImage,
-        applyCssFilters: applyCssFiltersToContext, // Expose this for ImageCanvas
+        applyCssFilters: applyCssFiltersToContext, 
       }}
     >
       {children}

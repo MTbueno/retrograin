@@ -1,15 +1,14 @@
 
 "use client";
 
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
-// hexToRgb, desaturateRgb, rgbToHex are now imported from colorUtils
-// import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils'; 
+import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 const PREVIEW_SCALE_FACTOR = 0.5;
-const NOISE_CANVAS_SIZE = 100; // Size of the canvas used to generate the noise ImageData
-// SHADOW_HIGHLIGHT_ALPHA_FACTOR and TINT_EFFECT_SCALING_FACTOR are defined in ImageEditorContext
+const NOISE_CANVAS_SIZE = 100;
+const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
 
 function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
@@ -29,13 +28,12 @@ export function ImageCanvas() {
     settings,
     canvasRef,
     isPreviewing,
-    noiseImageDataRef, // Changed from noiseSourceCanvasRef
+    noiseImageDataRef,
     applyCssFilters,
   } = useImageEditor();
 
-  // useEffect to generate noise ImageData once and store it in context
   useEffect(() => {
-    const currentCanvas = canvasRef.current; // Get current canvas element
+    const currentCanvas = canvasRef.current;
     if (typeof window !== 'undefined' && currentCanvas && !noiseImageDataRef.current) {
       const noiseCv = document.createElement('canvas');
       noiseCv.width = NOISE_CANVAS_SIZE;
@@ -45,17 +43,17 @@ export function ImageCanvas() {
         const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
-          const rand = Math.floor(Math.random() * 256); // Full black to white noise
+          const rand = Math.floor(Math.random() * 256);
           data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255;
         }
         noiseCtx.putImageData(imageData, 0, 0);
-        noiseImageDataRef.current = noiseCtx.getImageData(0, 0, NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE); // Store ImageData
-        console.log("Noise ImageData created and stored in context ref.");
+        noiseImageDataRef.current = noiseCtx.getImageData(0, 0, NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
+        console.log("Noise ImageData created and stored in context ref for ImageCanvas.");
       } else {
-        console.warn("Could not get 2D context for noise canvas generation.");
+        console.warn("Could not get 2D context for noise canvas generation in ImageCanvas.");
       }
     }
-  }, [canvasRef.current, noiseImageDataRef]); // Depend on canvasRef.current
+  }, [canvasRef.current, noiseImageDataRef]);
 
   const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
@@ -66,14 +64,15 @@ export function ImageCanvas() {
 
     const {
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
-      grainIntensity,
+      highlights, shadows,
+      colorTemperature,
+      tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation,
+      tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation,
+      vignetteIntensity, grainIntensity
     } = settings;
 
-    // Calculate content dimensions based on original image and cropZoom
     let contentWidth = originalImage.naturalWidth / cropZoom;
     let contentHeight = originalImage.naturalHeight / cropZoom;
-
-    // Calculate source x, y for cropping
     let sx = (cropOffsetX * 0.5 + 0.5) * (originalImage.naturalWidth - contentWidth);
     let sy = (cropOffsetY * 0.5 + 0.5) * (originalImage.naturalHeight - contentHeight);
 
@@ -87,8 +86,6 @@ export function ImageCanvas() {
       return;
     }
 
-    // Determine physical dimensions of the canvas (what we want to display)
-    // This already respects the crop
     let canvasPhysicalWidth, canvasPhysicalHeight;
     if (rotation === 90 || rotation === 270) {
       canvasPhysicalWidth = contentHeight;
@@ -98,7 +95,6 @@ export function ImageCanvas() {
       canvasPhysicalHeight = contentHeight;
     }
     
-    // Apply max width/height limits for preview performance
     const MAX_WIDTH_STANDARD_RATIO = 800;
     const MAX_WIDTH_WIDE_RATIO = 960;
     const MAX_PHYSICAL_HEIGHT_CAP = 1000;
@@ -114,50 +110,98 @@ export function ImageCanvas() {
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
     
-    // Set actual canvas buffer size
-    canvas.width = Math.max(1, Math.round(canvasPhysicalWidth));
-    canvas.height = Math.max(1, Math.round(canvasPhysicalHeight));
+    const effectiveCanvasWidth = isPreviewing ? Math.round(canvasPhysicalWidth * PREVIEW_SCALE_FACTOR) : canvasPhysicalWidth;
+    const effectiveCanvasHeight = isPreviewing ? Math.round(canvasPhysicalHeight * PREVIEW_SCALE_FACTOR) : canvasPhysicalHeight;
 
+    canvas.width = Math.max(1, effectiveCanvasWidth);
+    canvas.height = Math.max(1, effectiveCanvasHeight);
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
 
-    // Apply internal scaling for preview mode
-    if (isPreviewing) {
-      ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
-    }
-
-    // Apply transformations
-    // Translate to center of the (potentially scaled) drawing area
-    const effectiveCanvasWidth = isPreviewing ? canvas.width / PREVIEW_SCALE_FACTOR : canvas.width;
-    const effectiveCanvasHeight = isPreviewing ? canvas.height / PREVIEW_SCALE_FACTOR : canvas.height;
-
-    ctx.translate(Math.round(effectiveCanvasWidth / 2), Math.round(effectiveCanvasHeight / 2));
-    ctx.rotate((rotation * Math.PI) / 180);
-    ctx.scale(scaleX, scaleY);
-
-    // Destination draw dimensions should fill the (potentially scaled) effective canvas area
-    // after 90/270 rotation
-    const destDrawWidth = Math.round((rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth);
-    const destDrawHeight = Math.round((rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight);
+    ctx.translate(Math.round(canvas.width / 2), Math.round(canvas.height / 2));
+    if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
+    if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
     
-    // Apply CSS-like filters first
-    applyCssFilters(ctx, settings);
+    const destDrawWidth = Math.round((rotation === 90 || rotation === 270) ? canvas.height : canvas.width);
+    const destDrawHeight = Math.round((rotation === 90 || rotation === 270) ? canvas.width : canvas.height);
     
-    // Draw the cropped portion of the original image
+    ctx.filter = 'none';
+    applyCssFilters(ctx, settings); 
+    
     ctx.drawImage(
       originalImage,
-      sx, sy, contentWidth, contentHeight, // Source rectangle from original image
-      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight // Destination rectangle
+      sx, sy, contentWidth, contentHeight,
+      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight
     );
 
-    ctx.filter = 'none'; // Reset filter after drawing the base image
+    ctx.filter = 'none'; 
 
-    // Apply other canvas-based effects (highlights, shadows, tint, vignette)
-    // These were passed to drawImageWithSettingsToContext, which is now in ImageEditorContext
-    // For brevity, I'm omitting their direct reimplementation here as they'd call a shared function
-    // or have their logic duplicated. Assume this part refers to the effect application
-    // as it was in the `drawImageWithSettingsToContext` function from the context.
-    // For the grain effect, we use the new ImageData approach:
+    const effectRectArgs: [number, number, number, number] = [ Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight ];
+    const TINT_EFFECT_SCALING_FACTOR = 0.6; // Increased strength
+
+    const applyBlendEffect = (
+        ctxForBlend: CanvasRenderingContext2D,
+        rectArgs: [number, number, number, number],
+        color: string,
+        alpha: number,
+        compositeOperation: GlobalCompositeOperation
+      ) => {
+      if (alpha > 0.001) { 
+        ctxForBlend.globalCompositeOperation = compositeOperation;
+        ctxForBlend.fillStyle = color;
+        ctxForBlend.globalAlpha = alpha;
+        ctxForBlend.fillRect(...rectArgs);
+        ctxForBlend.globalAlpha = 1.0; 
+        ctxForBlend.globalCompositeOperation = 'source-over'; 
+      }
+    };
+    
+    if (Math.abs(shadows) > 0.001) {
+      const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
+      if (shadows > 0) applyBlendEffect(ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen'); 
+      else applyBlendEffect(ctx, effectRectArgs, 'rgb(50,50,50)', shadowAlpha, 'multiply'); 
+    }
+
+    if (Math.abs(highlights) > 0.001) {
+      const highlightAlpha = Math.abs(highlights) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
+      if (highlights < 0) applyBlendEffect(ctx, effectRectArgs, 'rgb(128,128,128)', highlightAlpha, 'multiply'); 
+      else applyBlendEffect(ctx, effectRectArgs, 'rgb(200,200,200)', highlightAlpha, 'screen'); 
+    }
+    
+    if (Math.abs(colorTemperature) > 0.001) {
+      const temp = colorTemperature / 100; 
+      const alpha = Math.abs(temp) * 0.1; 
+      const color = temp > 0 ? `rgba(255, 185, 70, ${alpha})` : `rgba(100, 150, 255, ${alpha})`; 
+      applyBlendEffect(ctx, effectRectArgs, color, 1, 'overlay'); 
+    }
+
+    const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
+      if (intensity > 0.001 && baseColorHex && baseColorHex !== '') { // Removed #000000 check
+        const rgbColor = hexToRgb(baseColorHex);
+        if (rgbColor) {
+          const saturatedRgb = desaturateRgb(rgbColor, saturationFactor);
+          const finalColorHex = rgbToHex(saturatedRgb.r, saturatedRgb.g, saturatedRgb.b);
+          applyBlendEffect(ctx, effectRectArgs, finalColorHex, intensity * TINT_EFFECT_SCALING_FACTOR, blendMode);
+        }
+      }
+    };
+    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge'); 
+    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
+    
+    if (vignetteIntensity > 0.001) {
+      const centerX = 0; 
+      const centerY = 0;
+      const radiusX = destDrawWidth / 2;
+      const radiusY = destDrawHeight / 2;
+      const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
+      
+      const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
+      gradient.addColorStop(0, `rgba(0,0,0,0)`);
+      gradient.addColorStop(1, `rgba(0,0,0,${vignetteIntensity * 0.7})`); 
+      ctx.fillStyle = gradient;
+      ctx.fillRect(...effectRectArgs);
+    }
 
     const currentNoiseImageData = noiseImageDataRef.current;
     if (grainIntensity > 0.001 && currentNoiseImageData) {
@@ -170,18 +214,10 @@ export function ImageCanvas() {
             tempNoiseCtx.putImageData(currentNoiseImageData, 0, 0);
             const liveNoisePattern = ctx.createPattern(tempNoiseCanvas, 'repeat');
             if (liveNoisePattern) {
-                // console.log("Applying grain for live preview:", { grainIntensity, pattern: 'created' });
                 ctx.save();
                 ctx.fillStyle = liveNoisePattern;
-                ctx.globalAlpha = grainIntensity * 0.5; // Preview intensity
+                ctx.globalAlpha = grainIntensity * 0.5; 
                 ctx.globalCompositeOperation = 'overlay';
-                 // The rectArgs for effects should also respect the preview scaling
-                const effectRectArgs: [number, number, number, number] = [
-                    Math.round(-destDrawWidth / 2), 
-                    Math.round(-destDrawHeight / 2), 
-                    destDrawWidth, 
-                    destDrawHeight
-                ];
                 ctx.fillRect(...effectRectArgs);
                 ctx.restore(); 
             } else {
@@ -194,10 +230,8 @@ export function ImageCanvas() {
       console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
     }
 
-
-    ctx.restore(); // Restore from the initial save (after clearRect)
+    ctx.restore();
   }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFilters]);
-
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 150),
@@ -222,7 +256,6 @@ export function ImageCanvas() {
       }
     }
   }, [originalImage, settings, isPreviewing, canvasRef, drawImageImmediately, debouncedDrawImage]);
-
 
   if (!originalImage) {
     return (

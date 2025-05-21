@@ -18,8 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-// Static version string to avoid hydration issues
-const CURRENT_PROJECT_VERSION = "alpha 0.2j"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.2k"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -27,7 +26,6 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    // Set the version string only on the client side after mounting
     setAppVersion(CURRENT_PROJECT_VERSION);
   }, []);
 
