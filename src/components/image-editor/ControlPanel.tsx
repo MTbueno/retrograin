@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.2k"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.2l"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -60,3 +60,5 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
+
+    
