@@ -57,54 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     setLoading(true); // Indicate an auth operation is starting
 
-    let isPwaMode = false;
-    if (typeof window !== 'undefined') {
-      isPwaMode = window.matchMedia('(display-mode: standalone)').matches || 
-                  window.matchMedia('(display-mode: minimal-ui)').matches;
-    }
-
-    if (isPwaMode) {
-      // PWA-like mode: Use signInWithRedirect
-      try {
-        await signInWithRedirect(auth, googleProvider);
-        // Redirect will occur. setLoading(false) will be handled by onAuthStateChanged on return,
-        // or if init itself fails below.
-      } catch (error: any) {
-        console.error("Error initiating sign in with redirect: ", error);
-        toast({
-          title: 'Login Failed',
-          description: error.message || 'Could not initiate sign in with Google via redirect.',
-          variant: 'destructive',
-        });
-        setLoading(false); // Reset loading if redirect initiation itself fails
-      }
-    } else {
-      // Non-PWA mode: Use signInWithPopup
-      try {
-        const result = await signInWithPopup(auth, googleProvider);
-        // If successful, onAuthStateChanged will set the user and eventually setLoading(false).
-        if (result.user) {
-          toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
-        }
-        // No explicit setLoading(false) here for success, onAuthStateChanged handles it.
-      } catch (error: any) {
-        console.error("Error signing in with Google Popup: ", error);
-        if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-          toast({
-            title: 'Login Popup Blocked',
-            description: 'The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site.',
-            variant: 'destructive',
-            duration: 8000,
-          });
-        } else {
-          toast({
-            title: 'Login Failed',
-            description: error.message || 'Could not sign in with Google via popup.',
-            variant: 'destructive',
-          });
-        }
-        setLoading(false); // Reset loading if popup fails
-      }
+    // Always use signInWithRedirect
+    try {
+      await signInWithRedirect(auth, googleProvider);
+      // Redirect will occur. setLoading(false) will be handled by onAuthStateChanged on return,
+      // or if the initiation of redirect itself fails below.
+    } catch (error: any) {
+      console.error("Error initiating sign in with redirect: ", error);
+      toast({
+        title: 'Login Failed',
+        description: error.message || 'Could not initiate sign in with Google via redirect.',
+        variant: 'destructive',
+      });
+      setLoading(false); // Reset loading if redirect initiation itself fails
     }
   };
 
