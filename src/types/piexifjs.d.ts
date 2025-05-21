@@ -1,2 +1,1 @@
-// src/types/piexifjs.d.ts
-declare module 'piexifjs';
+// This file will be deleted as piexifjs is being removed.

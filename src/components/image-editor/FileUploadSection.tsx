@@ -8,9 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { initialImageSettings } from '@/contexts/ImageEditorContext';
-import piexif from 'piexifjs';
+// piexif import removed
 
-const JPEG_QUALITY = 0.92; // Quality for non-JPEG to JPEG conversion
+const JPEG_QUALITY = 0.92; 
 
 export function FileUploadSection() {
   const { addImageObject } = useImageEditor();
@@ -39,51 +39,14 @@ export function FileUploadSection() {
         return;
       }
       
-      let preservedExifData: object | null = null;
-      try {
-        if (file.type === "image/jpeg" || file.type === "image/jpg") {
-            const fullExifObj = piexif.load(dataURL);
-            const tempExif: any = {}; // Start with an empty object to store only relevant tags
-
-            // Preserve DateTime from 0th IFD if it exists
-            if (fullExifObj["0th"] && fullExifObj["0th"][piexif.ImageIFD.DateTime]) {
-              if (!tempExif["0th"]) tempExif["0th"] = {};
-              tempExif["0th"][piexif.ImageIFD.DateTime] = fullExifObj["0th"][piexif.ImageIFD.DateTime];
-            }
-
-            // Preserve DateTimeOriginal and DateTimeDigitized from Exif IFD if they exist
-            if (fullExifObj["Exif"]) {
-              let exifIfdHasData = false;
-              if (fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal]) {
-                if (!tempExif["Exif"]) tempExif["Exif"] = {};
-                tempExif["Exif"][piexif.ExifIFD.DateTimeOriginal] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal];
-                exifIfdHasData = true;
-              }
-              if (fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized]) {
-                if (!tempExif["Exif"]) tempExif["Exif"] = {}; // Ensure Exif IFD exists
-                tempExif["Exif"][piexif.ExifIFD.DateTimeDigitized] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized];
-                exifIfdHasData = true;
-              }
-            }
-            
-            // If tempExif has any top-level keys (0th or Exif), then assign it. Otherwise, null.
-            if (Object.keys(tempExif).length > 0) {
-                preservedExifData = tempExif;
-            } else {
-                preservedExifData = null;
-            }
-        }
-      } catch (exifError) {
-        console.warn(`Could not load or process EXIF data for ${file.name}:`, exifError);
-        preservedExifData = null; 
-      }
+      // EXIF extraction logic removed
 
       const img = new Image();
       img.onload = () => {
         const baseFileName = file.name.replace(/\.[^/.]+$/, "");
         
         if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
-          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData: preservedExifData });
+          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } }); // exifData removed
         } else {
           // Convert non-JPEG to JPEG
           const tempCanvas = document.createElement('canvas');
@@ -97,10 +60,10 @@ export function FileUploadSection() {
             
             const jpegImage = new Image();
             jpegImage.onload = () => {
-              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings }, exifData: null }); // EXIF from non-JPEG is not preserved
+              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings } }); // exifData removed
               toast({
                 title: 'Image Converted',
-                description: `${file.name} was converted to JPEG (quality: ${JPEG_QUALITY * 100}%). Original EXIF (if any) not transferred from non-JPEG formats.`,
+                description: `${file.name} was converted to JPEG (quality: ${JPEG_QUALITY * 100}%).`,
               });
             };
             jpegImage.onerror = () => {
@@ -117,7 +80,7 @@ export function FileUploadSection() {
               description: `Could not prepare ${file.name} for JPEG conversion. Using original.`,
               variant: 'destructive',
             });
-            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData: null });
+            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } }); // exifData removed
           }
         }
       };
@@ -170,7 +133,7 @@ export function FileUploadSection() {
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept="image/jpeg,image/png,image/webp,image/heic,image/heif" // HEIC/HEIF might not have EXIF readable this way
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif" 
         multiple
         className="hidden"
       />
@@ -178,7 +141,7 @@ export function FileUploadSection() {
         <Upload className="mr-2 h-4 w-4" />
         Choose Image(s)
       </Button>
-      <p className="text-xs text-muted-foreground text-center">Up to 10 images. JPEGs preferred for EXIF.</p>
+      <p className="text-xs text-muted-foreground text-center">Up to 10 images. JPEGs preferred.</p>
     </div>
   );
 }
