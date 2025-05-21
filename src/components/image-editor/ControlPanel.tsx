@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Sidebar,
   SidebarHeader,
@@ -18,26 +18,16 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_VERSION_STRING = "alpha 0.1v"; // This should be the current version
+const APP_VERSION = "alpha 0.2";
 
 export function ControlPanel() {
-  const [appVersion, setAppVersion] = useState<string | null>(null);
-  const [hasMounted, setHasMounted] = useState(false);
-
-  useEffect(() => {
-    setHasMounted(true);
-    setAppVersion(CURRENT_VERSION_STRING);
-  }, []);
-
   return (
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">
         <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
-        {hasMounted && appVersion && (
-          <p className="text-xs text-muted-foreground text-center mt-1">
-            Versão: {appVersion}
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground text-center mt-1">
+          Versão: {APP_VERSION}
+        </p>
       </SidebarHeader>
       <SidebarContent asChild>
         <ScrollArea className="h-full">
