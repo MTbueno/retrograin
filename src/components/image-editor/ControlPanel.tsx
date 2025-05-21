@@ -1,4 +1,3 @@
-
 "use client";
 
 import React from 'react';
@@ -18,14 +17,11 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-// APP_VERSION constant and related logic removed
-
 export function ControlPanel() {
   return (
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">
         <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
-        {/* Version display paragraph removed */}
       </SidebarHeader>
       <SidebarContent asChild>
         <ScrollArea className="h-full">
@@ -48,4 +44,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
