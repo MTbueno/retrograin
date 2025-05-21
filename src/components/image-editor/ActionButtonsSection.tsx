@@ -8,11 +8,11 @@ import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { 
-  loadGapi, 
-  initTokenClient, 
-  requestAccessToken, 
-  ensureRetroGrainFolder, 
+import {
+  loadGapi,
+  initTokenClient,
+  requestAccessToken,
+  ensureRetroGrainFolder,
   uploadFileToDrive,
   isDriveAuthenticated,
   revokeAccessToken
@@ -21,10 +21,10 @@ import {
 const JPEG_QUALITY = 0.92;
 
 export function ActionButtonsSection() {
-  const { 
+  const {
     originalImage,
     allImages,
-    dispatchSettings, 
+    dispatchSettings,
     baseFileName,
     getCanvasDataURL,
     generateImageDataUrlWithSettings,
@@ -34,12 +34,12 @@ export function ActionButtonsSection() {
     copiedSettings
   } = useImageEditor();
   const { toast } = useToast();
-  const { user: firebaseUser } = useAuth(); 
+  const { user: firebaseUser } = useAuth();
 
   const [isGapiLoaded, setIsGapiLoaded] = useState(false);
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false); // True when connecting or saving
-  
+
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
     setIsSavingToDrive(false); // Always reset saving state when response is received
 
@@ -52,14 +52,15 @@ export function ActionButtonsSection() {
       } else {
         // This case would be unusual: token received, set, but still not "authenticated"
         setIsDriveAuthorized(false);
-        console.error("Token do Drive recebido e definido, mas isDriveAuthenticated() ainda é falso. Problema de estado do token GAPI?");
-        toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização.', variant: 'destructive' });
+        console.error("Token do Drive recebido e definido, mas isDriveAuthenticated() ainda é falso. Problema de estado do token GAPI ou API do Drive não inicializada (driveApiLoaded).");
+        toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização. A API do Drive pode não estar pronta.', variant: 'destructive' });
       }
     } else {
       setIsDriveAuthorized(false);
-      console.error("Falha ao obter token de acesso ou erro na tokenResponse:", tokenResponse);
-      const errorMessage = (tokenResponse as any)?.error_description || "Falha ao conectar ao Google Drive.";
-      toast({ title: 'Falha na Conexão com Drive', description: errorMessage, variant: 'destructive' });
+      const errorDescription = (tokenResponse as any)?.error_description || "Falha ao obter token de acesso do Google Drive.";
+      const errorCode = (tokenResponse as any)?.error;
+      console.error("Falha ao obter token de acesso do Drive:", errorCode, errorDescription, tokenResponse);
+      toast({ title: 'Falha na Conexão com Drive', description: `${errorDescription} (Erro: ${errorCode || 'desconhecido'})`, variant: 'destructive' });
     }
   }, [toast]);
 
@@ -90,8 +91,8 @@ export function ActionButtonsSection() {
         }, 1500); // Slightly increased delay
       }
     });
-  }, [handleTokenResponse]); 
-  
+  }, [handleTokenResponse]);
+
   // This effect tries to set the initial authorized state if a token already exists
   // when GAPI loads, or if the GIS library loads later than GAPI.
   useEffect(() => {
@@ -182,20 +183,20 @@ export function ActionButtonsSection() {
       toast({ title: 'Não Logado', description: 'Por favor, faça login para salvar no Google Drive.', variant: 'default' });
       return;
     }
-  
+
     if (!isGapiLoaded) {
       toast({ title: 'API do Google não carregada', description: 'Por favor, aguarde um momento e tente novamente.', variant: 'default' });
       return;
     }
-  
+
     if (!isDriveAuthenticated()) {
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
       setIsSavingToDrive(true); // Indicate an action is pending user authorization
       requestAccessToken(); // This will trigger handleTokenResponse
       // isSavingToDrive will be reset in handleTokenResponse
-      return; 
+      return;
     }
-  
+
     // If we reach here, user is authenticated with Drive and GAPI is loaded.
     if (!originalImage) {
       toast({ title: 'Nenhuma Imagem', description: 'Por favor, carregue e edite uma imagem para salvar.', variant: 'default' });
@@ -213,8 +214,7 @@ export function ActionButtonsSection() {
           if (savedFile && savedFile.id) {
             toast({ title: 'Salvo no Drive!', description: `${baseFileName}_retrograin.jpg salvo na pasta RetroGrain.` });
           } else {
-            // More specific error might come from uploadFileToDrive's toast
-            // toast({ title: 'Falha ao Salvar', description: 'Não foi possível salvar a imagem no Google Drive.', variant: 'destructive' });
+            // Error toast for uploadFileToDrive is handled within that function
           }
         } else {
           toast({ title: 'Erro', description: 'Não foi possível gerar os dados da imagem para salvar.', variant: 'destructive' });
@@ -229,7 +229,7 @@ export function ActionButtonsSection() {
       setIsSavingToDrive(false);
     }
   };
-  
+
   const handleDisconnectDrive = () => {
     revokeAccessToken();
     setIsDriveAuthorized(false);
@@ -269,7 +269,7 @@ export function ActionButtonsSection() {
   return (
     <div className="space-y-3 w-full max-w-[14rem] mx-auto">
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
-        <RotateCcwSquare className="mr-2 h-4 w-4" /> 
+        <RotateCcwSquare className="mr-2 h-4 w-4" />
         Resetar Ajustes
       </Button>
       <div className="grid grid-cols-2 gap-2">
@@ -282,14 +282,14 @@ export function ActionButtonsSection() {
           Colar
         </Button>
       </div>
-      
+
       {firebaseUser && ( // Only show Drive buttons if Firebase user exists
         isDriveAuthorized ? (
           <>
-            <Button 
-              onClick={handleSaveToDrive} 
+            <Button
+              onClick={handleSaveToDrive}
               disabled={isSavingToDrive || !originalImage} // Disabled if saving or no image
-              variant="default" 
+              variant="default"
               className="w-full"
             >
               <Save className="mr-2 h-4 w-4" />
@@ -301,10 +301,10 @@ export function ActionButtonsSection() {
           </>
         ) : (
           // This button now calls handleSaveToDrive, which internally calls requestAccessToken
-          <Button 
-            onClick={handleSaveToDrive} 
+          <Button
+            onClick={handleSaveToDrive}
             disabled={!isGapiLoaded || isSavingToDrive } // Disabled if GAPI not loaded or if already trying to connect/save
-            variant="outline" 
+            variant="outline"
             className="w-full"
           >
             <Save className="mr-2 h-4 w-4" />
@@ -320,6 +320,5 @@ export function ActionButtonsSection() {
     </div>
   );
 }
-
 
     
