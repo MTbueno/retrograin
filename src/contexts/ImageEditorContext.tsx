@@ -15,8 +15,8 @@ export interface ImageSettings {
   shadows: number;
   whites: number;
   blacks: number;
-  sharpness: number; // Added for sharpness
-  // hueRotate: number; // Re-enabled if we use CSS filters
+  // sharpness: number; // Removed
+  hueRotate: number; 
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
@@ -45,15 +45,15 @@ export const initialImageSettings: ImageSettings = {
   shadows: 0,
   whites: 0,
   blacks: 0,
-  sharpness: 0, // Initial sharpness
-  // hueRotate: 0, // Initial hueRotate
+  // sharpness: 0, // Removed
+  hueRotate: 0, 
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
-  tintShadowsColor: '#808080', // Default tint color (neutral gray)
+  tintShadowsColor: '#808080', 
   tintShadowsIntensity: 0,
   tintShadowsSaturation: 1,
-  tintHighlightsColor: '#808080', // Default tint color (neutral gray)
+  tintHighlightsColor: '#808080', 
   tintHighlightsIntensity: 0,
   tintHighlightsSaturation: 1,
   rotation: 0,
@@ -71,7 +71,6 @@ export interface ImageObject {
   baseFileName: string;
   settings: ImageSettings;
   thumbnailDataUrl: string;
-  // exifData: object | null; // Removed EXIF
 }
 
 export type SettingsAction =
@@ -84,8 +83,8 @@ export type SettingsAction =
   | { type: 'SET_SHADOWS'; payload: number }
   | { type: 'SET_WHITES'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
-  | { type: 'SET_SHARPNESS'; payload: number } // Added
-  // | { type: 'SET_HUE_ROTATE'; payload: number } // Re-enabled
+  // | { type: 'SET_SHARPNESS'; payload: number } // Removed
+  | { type: 'SET_HUE_ROTATE'; payload: number } 
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -102,7 +101,7 @@ export type SettingsAction =
   | { type: 'SET_CROP_ZOOM'; payload: number }
   | { type: 'SET_CROP_OFFSET_X'; payload: number }
   | { type: 'SET_CROP_OFFSET_Y'; payload: number }
-  | { type: 'RESET_CROP_AND_ANGLE' } // Keeps angle, resets crop/zoom
+  | { type: 'RESET_CROP_AND_ANGLE' } 
   | { type: 'RESET_SETTINGS' }
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings }
   | { type: 'APPLY_FILTER'; payload: string | null };
@@ -127,10 +126,10 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, whites: action.payload };
     case 'SET_BLACKS':
       return { ...state, blacks: action.payload };
-    case 'SET_SHARPNESS': // Added
-      return { ...state, sharpness: action.payload };
-    // case 'SET_HUE_ROTATE': // Re-enabled
-    //   return { ...state, hueRotate: action.payload };
+    // case 'SET_SHARPNESS': // Removed
+    //   return { ...state, sharpness: action.payload };
+    case 'SET_HUE_ROTATE': 
+      return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -163,12 +162,11 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetX: Math.max(-1, Math.min(1, action.payload)) };
     case 'SET_CROP_OFFSET_Y':
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
-    case 'RESET_CROP_AND_ANGLE': // Renamed, keeps current angle
+    case 'RESET_CROP_AND_ANGLE': 
       return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
     case 'APPLY_FILTER':
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
-      // Preserve transformational settings, reset others
       return { ...initialImageSettings, 
         rotation: state.rotation, 
         scaleX: state.scaleX, 
@@ -184,29 +182,23 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
   }
 }
 
-// This function now lives in the context and is passed down
-// It's responsible for creating the CSS filter string
 export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings: ImageSettings) => {
-  ctx.filter = 'none'; // Explicitly reset before applying new filters
+  ctx.filter = 'none'; 
   const filters: string[] = [];
 
-  // Calculate base values from settings
   let baseBrightness = settings.brightness;
   let baseContrast = settings.contrast;
   let baseSaturation = settings.saturation;
 
-  // Apply exposure (modifies baseBrightness)
   if (settings.exposure !== 0) {
     baseBrightness += settings.exposure;
   }
   
-  // Apply blacks adjustment (modifies baseBrightness and baseContrast)
   if (settings.blacks !== 0) {
     baseBrightness += settings.blacks * 0.1; 
     baseContrast *= (1 - Math.abs(settings.blacks) * 0.15); 
   }
   
-  // Apply whites adjustment (modifies baseBrightness and baseContrast)
   if (settings.whites !== 0) {
     baseBrightness += settings.whites * 0.15; 
     if (settings.whites > 0) {
@@ -216,38 +208,34 @@ export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings
     }
   }
 
-  // Apply vibrance (modifies baseSaturation and baseContrast)
   if (settings.vibrance > 0) {
     baseSaturation = settings.saturation * (1 + settings.vibrance * 0.5);
     baseContrast = baseContrast * (1 + settings.vibrance * 0.2);
   } else if (settings.vibrance < 0) {
-    baseSaturation = settings.saturation * (1 + settings.vibrance * 0.8); // vibrance is negative
+    baseSaturation = settings.saturation * (1 + settings.vibrance * 0.8); 
   }
 
-  // Apply sharpness (modifies baseContrast)
-  // Sharpness (0 to 1) increases contrast by up to 20% of its current value
-  baseContrast = baseContrast * (1 + settings.sharpness * 0.2);
+  // Sharpness logic removed
+  // baseContrast = baseContrast * (1 + settings.sharpness * 0.2);
 
-
-  // Clamp final values
   const finalBrightness = Math.max(0, Math.min(3, baseBrightness));
   const finalContrast = Math.max(0, Math.min(3, baseContrast));
   const finalSaturation = Math.max(0, Math.min(3, baseSaturation));
 
-  // Build filter string
   if (Math.abs(finalBrightness - 1) > 0.001) filters.push(`brightness(${finalBrightness * 100}%)`);
   if (Math.abs(finalContrast - 1) > 0.001) filters.push(`contrast(${finalContrast * 100}%)`);
   if (Math.abs(finalSaturation - 1) > 0.001) filters.push(`saturate(${finalSaturation * 100}%)`);
   
-  // if (settings.hueRotate !== 0 && Math.abs(settings.hueRotate) > 0.5) { // Re-enable if needed
-  //   filters.push(`hue-rotate(${Math.round(settings.hueRotate)}deg)`);
-  // }
+  if (settings.hueRotate !== 0 && Math.abs(settings.hueRotate) > 0.5) { 
+    filters.push(`hue-rotate(${Math.round(settings.hueRotate)}deg)`);
+  }
 
-  if (settings.filter) { // For preset filters
+  if (settings.filter) { 
     filters.push(settings.filter);
   }
 
   const trimmedFilterString = filters.join(' ').trim();
+  // console.log('[ImageEditorContext] Hue Rotate Value:', settings.hueRotate);
   // console.log('[ImageEditorContext] Final CSS Filter String:', trimmedFilterString);
   if (trimmedFilterString) {
     ctx.filter = trimmedFilterString;
@@ -255,20 +243,20 @@ export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings
 };
 
 
-const TINT_EFFECT_SCALING_FACTOR = 0.6; // Increased from 0.18
-const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; // Increased for more intensity
-const NOISE_CANVAS_SIZE = 250; // Increased from 100
+const TINT_EFFECT_SCALING_FACTOR = 0.6; 
+const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
+const NOISE_CANVAS_SIZE = 250; 
 
 export const drawImageWithSettingsToContext = (
   _ctx: CanvasRenderingContext2D,
   imageToDraw: HTMLImageElement,
   imageSettings: ImageSettings,
-  targetCanvasWidth: number, // This is the full-res export canvas width
-  targetCanvasHeight: number, // This is the full-res export canvas height
-  noiseImageData: ImageData | null // Accepts ImageData for noise
+  targetCanvasWidth: number, 
+  targetCanvasHeight: number, 
+  noiseImageData: ImageData | null 
 ) => {
     _ctx.clearRect(0, 0, targetCanvasWidth, targetCanvasHeight);
-    _ctx.save(); // Save the clean state of the export canvas
+    _ctx.save(); 
 
     const {
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
@@ -279,8 +267,6 @@ export const drawImageWithSettingsToContext = (
       vignetteIntensity, grainIntensity
     } = imageSettings;
 
-    // Calculate source region from the original image based on crop settings
-    // These are always relative to the original image's full resolution
     let sWidth = imageToDraw.naturalWidth / cropZoom;
     let sHeight = imageToDraw.naturalHeight / cropZoom;
     const maxPanX = Math.max(0, imageToDraw.naturalWidth - sWidth);
@@ -293,13 +279,10 @@ export const drawImageWithSettingsToContext = (
     sx = Math.max(0, Math.min(Math.round(sx), imageToDraw.naturalWidth - sWidth));
     sy = Math.max(0, Math.min(Math.round(sy), imageToDraw.naturalHeight - sHeight));
 
-    // For export, the destination drawing dimensions are the targetCanvasWidth/Height
-    // The context is translated to the center of this target canvas.
     _ctx.translate(Math.round(targetCanvasWidth / 2), Math.round(targetCanvasHeight / 2));
     if (rotation !== 0) _ctx.rotate((rotation * Math.PI) / 180);
     if (scaleX !== 1 || scaleY !== 1) _ctx.scale(scaleX, scaleY);
 
-    // The image will be drawn to fill the (potentially rotated/flipped) targetCanvas
     const destDrawWidthForExport = Math.round((rotation === 90 || rotation === 270) ? targetCanvasHeight : targetCanvasWidth);
     const destDrawHeightForExport = Math.round((rotation === 90 || rotation === 270) ? targetCanvasWidth : targetCanvasHeight);
 
@@ -396,7 +379,7 @@ export const drawImageWithSettingsToContext = (
             const grainPattern = _ctx.createPattern(tempNoisePatternCanvas, 'repeat');
             if (grainPattern) {
                 _ctx.fillStyle = grainPattern;
-                _ctx.globalAlpha = grainIntensity * 1.0; // Full intensity for export
+                _ctx.globalAlpha = grainIntensity * 1.0; 
                 _ctx.globalCompositeOperation = 'overlay';
                 _ctx.fillRect(...effectRectArgs);
                 _ctx.globalAlpha = 1.0; 
@@ -408,7 +391,7 @@ export const drawImageWithSettingsToContext = (
           console.warn("Could not get context for temporary noise canvas during export using ImageData.");
         }
     }
-    _ctx.restore(); // Restore to the clean state of the export canvas
+    _ctx.restore(); 
 };
 
 interface ImageEditorContextType {
@@ -444,7 +427,7 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
   const MAX_THUMB_HEIGHT = 80;
   let { naturalWidth: width, naturalHeight: height } = imageElement;
 
-  if (!thumbCtx) return ''; // Should not happen in browser
+  if (!thumbCtx) return ''; 
 
   if (width > height) {
     if (width > MAX_THUMB_WIDTH) {
@@ -460,7 +443,7 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
   thumbCanvas.width = width;
   thumbCanvas.height = height;
   thumbCtx.drawImage(imageElement, 0, 0, width, height);
-  return thumbCanvas.toDataURL('image/jpeg', 0.8); // Use JPEG for smaller thumbnails
+  return thumbCanvas.toDataURL('image/jpeg', 0.8); 
 };
 
 export function ImageEditorProvider({ children }: { children: ReactNode }) {
@@ -473,11 +456,10 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
 
   const [isPreviewing, setIsPreviewing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const noiseImageDataRef = useRef<ImageData | null>(null); // Stores the ImageData for noise
+  const noiseImageDataRef = useRef<ImageData | null>(null); 
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
 
   useEffect(() => {
-    // When activeImageId changes, or its settings change, update the master list
     if (activeImageId && currentSettings) {
       setAllImages(prevImages =>
         prevImages.map(img =>
@@ -493,19 +475,18 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     const newImageObject: ImageObject = {
       imageElement: imageData.imageElement,
       baseFileName: imageData.baseFileName,
-      settings: { ...initialImageSettings, ...(imageData.settings || {}) }, // Apply specific settings if provided
+      settings: { ...initialImageSettings, ...(imageData.settings || {}) }, 
       id: newId,
       thumbnailDataUrl,
-      // exifData: imageData.exifData, // Removed EXIF
     };
     setAllImages(prev => [...prev, newImageObject]);
-    setActiveImageIdInternal(newId); // Automatically activate the new image
+    setActiveImageIdInternal(newId); 
   }, []);
 
   const removeImage = useCallback((id: string) => {
     setAllImages(prev => {
       const remainingImages = prev.filter(img => img.id !== id);
-      if (activeImageId === id) { // If active image is removed
+      if (activeImageId === id) { 
         setActiveImageIdInternal(remainingImages.length > 0 ? remainingImages[0].id : null);
       }
       return remainingImages;
@@ -521,14 +502,13 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         setCurrentBaseFileName(imageObj.baseFileName);
         dispatchSettings({ type: 'LOAD_SETTINGS', payload: imageObj.settings });
       }
-    } else { // No image selected
+    } else { 
       setCurrentActiveImageElement(null);
       setCurrentBaseFileName('retrograin_image');
       dispatchSettings({ type: 'RESET_SETTINGS' });
     }
   }, [allImages]);
 
-  // Effect to auto-select the first image if none is active but images exist
   useEffect(() => {
     if (allImages.length > 0 && !activeImageId) {
       setActiveImageId(allImages[0].id);
@@ -538,21 +518,11 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality: number = 0.92) => {
     const canvas = canvasRef.current;
     if (!canvas || !currentActiveImageElement) return null;
-
-    // For getCanvasDataURL, we need to render the *current state* of the visible canvas
-    // This means we use the dimensions and context of canvasRef.current directly.
-    // The drawImageImmediately function (called by useEffect in ImageCanvas) handles the actual drawing
-    // based on currentActiveImageElement and currentSettings.
-    // We simply need to ensure that the canvas has been drawn with the latest settings before calling toDataURL.
-    // The debouncing in ImageCanvas should handle this. If not isPreviewing, it draws immediately.
     
-    // Create a temporary offscreen canvas to draw the final image at full resolution for export
-    // This is because the main canvas (canvasRef.current) might be scaled down for preview performance.
     const offscreenCanvas = document.createElement('canvas');
     const imageToDraw = currentActiveImageElement;
     const settingsToApply = currentSettings;
 
-    // Calculate dimensions for the offscreen canvas based on the cropped region of the original image
     let sWidthFull = imageToDraw.naturalWidth / settingsToApply.cropZoom;
     let sHeightFull = imageToDraw.naturalHeight / settingsToApply.cropZoom;
 
@@ -565,7 +535,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         canvasBufferHeightFull = sHeightFull;
     }
 
-    // Ensure positive dimensions for the canvas
     canvasBufferWidthFull = Math.abs(Math.round(canvasBufferWidthFull));
     canvasBufferHeightFull = Math.abs(Math.round(canvasBufferHeightFull));
 
@@ -578,7 +547,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     drawImageWithSettingsToContext(ctx, imageToDraw, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
     return offscreenCanvas.toDataURL(type, quality);
 
-  }, [currentActiveImageElement, currentSettings, noiseImageDataRef]); // Removed canvasRef from deps
+  }, [currentActiveImageElement, currentSettings, noiseImageDataRef]); 
 
   const copyActiveSettings = useCallback(() => {
     if (activeImageId) {
@@ -591,7 +560,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
 
   const pasteSettingsToActiveImage = useCallback(() => {
     if (activeImageId && copiedSettings) {
-      // Preserve transformational settings from the target image, apply others from copied
       const targetImg = allImages.find(img => img.id === activeImageId);
       if (targetImg) {
         const newSettings = {
@@ -617,11 +585,9 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     return new Promise((resolve) => {
       const offscreenCanvas = document.createElement('canvas');
       
-      // Determine the dimensions of the content to be drawn from the source image
       let sWidthFull = imageElement.naturalWidth / settingsToApply.cropZoom;
       let sHeightFull = imageElement.naturalHeight / settingsToApply.cropZoom;
 
-      // Determine the dimensions of the offscreen canvas based on the content and 90/270deg rotations
       let canvasBufferWidthFull, canvasBufferHeightFull;
       if (settingsToApply.rotation === 90 || settingsToApply.rotation === 270) {
           canvasBufferWidthFull = sHeightFull;
@@ -630,13 +596,11 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
           canvasBufferWidthFull = sWidthFull;
           canvasBufferHeightFull = sHeightFull;
       }
-      // Flips (scaleX, scaleY) do not affect buffer dimensions
 
-      // Ensure positive dimensions
       canvasBufferWidthFull = Math.abs(Math.round(canvasBufferWidthFull));
       canvasBufferHeightFull = Math.abs(Math.round(canvasBufferHeightFull));
 
-      offscreenCanvas.width = Math.max(1, canvasBufferWidthFull); // Ensure at least 1px
+      offscreenCanvas.width = Math.max(1, canvasBufferWidthFull); 
       offscreenCanvas.height = Math.max(1, canvasBufferHeightFull);
 
       const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
@@ -647,7 +611,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       drawImageWithSettingsToContext(ctx, imageElement, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
       resolve(offscreenCanvas.toDataURL(type, quality));
     });
-  }, [noiseImageDataRef]); // Dependency on noiseImageDataRef for grain
+  }, [noiseImageDataRef]); 
 
 
   return (
@@ -663,7 +627,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         removeImage,
         setActiveImageId,
         canvasRef,
-        noiseImageDataRef, // Provide the ref for noise ImageData
+        noiseImageDataRef, 
         getCanvasDataURL,
         generateImageDataUrlWithSettings,
         isPreviewing,
@@ -671,7 +635,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         copiedSettings,
         copyActiveSettings,
         pasteSettingsToActiveImage,
-        applyCssFilters: applyCssFiltersToContext, // Pass the function itself
+        applyCssFilters: applyCssFiltersToContext, 
       }}
     >
       {children}
@@ -686,4 +650,3 @@ export function useImageEditor() {
   }
   return context;
 }
-
