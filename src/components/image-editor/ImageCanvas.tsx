@@ -99,32 +99,37 @@ export function ImageCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
 
+    let effectiveCanvasWidth = canvas.width;
+    let effectiveCanvasHeight = canvas.height;
+
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
+      effectiveCanvasWidth = Math.round(canvas.width / PREVIEW_SCALE_FACTOR);
+      effectiveCanvasHeight = Math.round(canvas.height / PREVIEW_SCALE_FACTOR);
+    } else {
+      effectiveCanvasWidth = canvas.width;
+      effectiveCanvasHeight = canvas.height;
     }
     
-    const effectiveCanvasWidth = isPreviewing ? canvas.width / PREVIEW_SCALE_FACTOR : canvas.width;
-    const effectiveCanvasHeight = isPreviewing ? canvas.height / PREVIEW_SCALE_FACTOR : canvas.height;
-    
-    ctx.translate(effectiveCanvasWidth / 2, effectiveCanvasHeight / 2);
+    ctx.translate(Math.round(effectiveCanvasWidth / 2), Math.round(effectiveCanvasHeight / 2));
     ctx.rotate((rotation * Math.PI) / 180); 
     ctx.scale(scaleX, scaleY); 
     
     ctx.filter = 'none'; 
     applyCssFilters(ctx, settings); 
     
-    const destDrawWidth = (rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth;
-    const destDrawHeight = (rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight;
+    const destDrawWidth = Math.round((rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth);
+    const destDrawHeight = Math.round((rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight);
     
     ctx.drawImage(
       originalImage,
       sx, sy, contentWidth, contentHeight, 
-      -destDrawWidth / 2, -destDrawHeight / 2, destDrawWidth, destDrawHeight
+      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight
     );
 
     ctx.filter = 'none'; 
 
-    const effectRectArgs: [number, number, number, number] = [ -destDrawWidth / 2, -destDrawHeight / 2, destDrawWidth, destDrawHeight ];
+    const effectRectArgs: [number, number, number, number] = [ Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight ];
 
     const applyBlendEffect = (
         _ctx: CanvasRenderingContext2D,
@@ -194,7 +199,7 @@ export function ImageCanvas() {
         console.log("Applying grain:", { grainIntensity, pattern: noisePatternRef.current });
         ctx.save();
         ctx.fillStyle = noisePatternRef.current;
-        ctx.globalAlpha = grainIntensity * 0.5; // Increased intensity
+        ctx.globalAlpha = grainIntensity * 0.5; 
         ctx.globalCompositeOperation = 'overlay';
         ctx.fillRect(...effectRectArgs); 
         ctx.restore(); 
@@ -214,7 +219,7 @@ export function ImageCanvas() {
             const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                const rand = Math.floor(Math.random() * 150) + 50; 
+                const rand = Math.floor(Math.random() * 256); // Full range noise
                 data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255; 
             }
             noiseCtx.putImageData(imageData, 0, 0);
@@ -276,3 +281,4 @@ export function ImageCanvas() {
     />
   );
 }
+
