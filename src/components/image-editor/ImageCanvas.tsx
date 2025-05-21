@@ -6,64 +6,21 @@ import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContex
 import { Card } from '@/components/ui/card';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
-
-const applyCssFilters = (
+// Helper function to apply a canvas blend effect
+const applyBlendEffect = (
   ctx: CanvasRenderingContext2D,
-  settings: ImageSettings
+  rectArgs: [number, number, number, number],
+  color: string,
+  alpha: number,
+  compositeOperation: GlobalCompositeOperation
 ) => {
-  let filterString = '';
-
-  // Ensure all setting values are numbers and have defaults
-  const brightnessSetting = typeof settings.brightness === 'number' ? settings.brightness : 1;
-  const contrastSetting = typeof settings.contrast === 'number' ? settings.contrast : 1;
-  const saturationVal = typeof settings.saturation === 'number' ? settings.saturation : 1;
-  const exposureVal = typeof settings.exposure === 'number' ? settings.exposure : 0;
-  const blacksVal = typeof settings.blacks === 'number' ? settings.blacks : 0;
-  const hueRotateVal = typeof settings.hueRotate === 'number' ? settings.hueRotate : 0;
-
-  let finalBrightness = brightnessSetting;
-  let finalContrast = contrastSetting;
-
-  // Adjust brightness and contrast based on 'blacks'
-  if (blacksVal !== 0) {
-    finalContrast *= (1 - blacksVal * 0.5); 
-    finalBrightness *= (1 + blacksVal * 0.2); 
-  }
-
-  // Adjust brightness based on 'exposure'
-  finalBrightness *= (1 + exposureVal);
-
-
-  // Clamp final brightness and contrast to avoid extreme values
-  finalBrightness = Math.max(0.1, Math.min(3, finalBrightness)); // Ensure brightness doesn't go to 0
-  finalContrast = Math.max(0.1, Math.min(3, finalContrast));   
-
-
-  if (finalBrightness !== 1) filterString += `brightness(${finalBrightness * 100}%) `;
-  if (finalContrast !== 1) filterString += `contrast(${finalContrast * 100}%) `;
-  if (saturationVal !== 1) filterString += `saturate(${saturationVal * 100}%) `;
-  if (hueRotateVal !== 0) filterString += `hue-rotate(${hueRotateVal}deg) `;
-
-
-  if (settings.filter) {
-    if (settings.filter === 'grayscale') filterString += `grayscale(100%) `;
-    if (settings.filter === 'sepia') filterString += `sepia(100%) `;
-    if (settings.filter === 'invert') filterString += `invert(100%) `;
-  }
-
-  const trimmedFilterString = filterString.trim();
-  
-  if (typeof navigator !== 'undefined') {
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    if (isSafari) {
-      console.log('[Safari Debug] CSS Filter String:', trimmedFilterString);
-    }
-  }
-  
-  // Explicitly reset filter before applying a new one
-  ctx.filter = 'none'; 
-  if (trimmedFilterString) { 
-    ctx.filter = trimmedFilterString;
+  if (alpha > 0.001) { // Only apply if alpha is significant
+    ctx.globalCompositeOperation = compositeOperation;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(...rectArgs);
+    ctx.globalAlpha = 1.0; // Reset alpha
+    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
   }
 };
 
@@ -102,15 +59,17 @@ export function ImageCanvas() {
 
     const { rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY } = settings;
 
+    // Calculate source dimensions from original image based on cropZoom
     let sWidth = originalImage.naturalWidth / cropZoom;
     let sHeight = originalImage.naturalHeight / cropZoom;
 
+    // Calculate source X, Y based on cropOffset
     const maxPanX = originalImage.naturalWidth - sWidth;
     const maxPanY = originalImage.naturalHeight - sHeight;
-
     let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
     let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
     
+    // Clamp source dimensions and offsets
     sWidth = Math.max(1, sWidth);
     sHeight = Math.max(1, sHeight);
     sx = Math.max(0, Math.min(sx, originalImage.naturalWidth - sWidth));
@@ -121,6 +80,7 @@ export function ImageCanvas() {
       return;
     }
     
+    // Determine canvas buffer dimensions based on the (potentially rotated 90/270 deg) source selection
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
       canvasBufferWidth = sHeight; 
@@ -134,19 +94,18 @@ export function ImageCanvas() {
     canvas.width = Math.round(canvasBufferWidth * currentScaleFactor * Math.abs(scaleX));
     canvas.height = Math.round(canvasBufferHeight * currentScaleFactor * Math.abs(scaleY));
     
+    // These are the dimensions the image portion will be drawn at *within the transformed context*
     const finalDestWidth = canvas.width / Math.abs(scaleX);
     const finalDestHeight = canvas.height / Math.abs(scaleY);
-
+    
+    ctx.clearRect(0,0, canvas.width, canvas.height); // Clear canvas before drawing
     ctx.save();
     
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(scaleX, scaleY);
 
-    // Explicitly set filter to none before applying CSS filters
-    ctx.filter = 'none';
-    applyCssFilters(ctx, settings);
-
+    // --- Draw base image ---
     ctx.drawImage(
       originalImage,
       sx, sy, sWidth, sHeight,            
@@ -155,9 +114,6 @@ export function ImageCanvas() {
       finalDestWidth,        
       finalDestHeight
     );
-
-    // Explicitly set filter to none after drawing with CSS filters and before other canvas effects
-    ctx.filter = 'none'; 
     
     const rectArgs: [number, number, number, number] = [
       -finalDestWidth / 2, 
@@ -166,47 +122,72 @@ export function ImageCanvas() {
       finalDestHeight
     ];
 
+    // --- Apply Canvas-based Adjustments ---
+    // Exposure
+    if (settings.exposure !== 0) {
+      const exposureAlpha = Math.abs(settings.exposure);
+      if (settings.exposure > 0) {
+        applyBlendEffect(ctx, rectArgs, `rgba(255, 255, 255, ${exposureAlpha * 0.7})`, 1, 'screen');
+      } else {
+        applyBlendEffect(ctx, rectArgs, `rgba(128, 128, 128, ${exposureAlpha * 0.7})`, 1, 'multiply');
+      }
+    }
+
+    // Brightness
+    if (settings.brightness !== 1) {
+      if (settings.brightness > 1) {
+        applyBlendEffect(ctx, rectArgs, `rgba(255, 255, 255, ${(settings.brightness - 1) * 0.4})`, 1, 'screen');
+      } else { // brightness < 1
+        applyBlendEffect(ctx, rectArgs, `rgba(0, 0, 0, ${(1 - settings.brightness) * 0.4})`, 1, 'multiply');
+      }
+    }
+
+    // Contrast (Approximation)
+    if (settings.contrast !== 1) {
+      const contrastFactor = (settings.contrast - 1) * 0.25; // Max +/- ~12.5% effect for contrast
+      applyBlendEffect(ctx, rectArgs, `rgba(128, 128, 128, ${Math.abs(contrastFactor)})`, 1, 'overlay');
+    }
+    
+    // Saturation (Desaturation only for now)
+    if (settings.saturation < 1) {
+      ctx.globalCompositeOperation = 'color';
+      ctx.fillStyle = 'gray';
+      ctx.globalAlpha = (1 - settings.saturation) * 0.8; // Apply 80% of the desaturation effect
+      ctx.fillRect(...rectArgs);
+      ctx.globalAlpha = 1.0;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Blacks
+    if (settings.blacks !== 0) {
+      const blacksAlpha = Math.abs(settings.blacks) * 0.25;
+      if (settings.blacks > 0) { // Lift blacks
+        applyBlendEffect(ctx, rectArgs, `rgba(80, 80, 80, ${blacksAlpha})`, 1, 'screen');
+      } else { // Crush blacks
+        applyBlendEffect(ctx, rectArgs, `rgba(40, 40, 40, ${blacksAlpha})`, 1, 'multiply');
+      }
+    }
+    
     // Shadows (Canvas specific)
     if (settings.shadows > 0) { 
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.shadows * 0.175 * 0.5; 
-      ctx.fillStyle = 'rgb(128, 128, 128)';
-      ctx.fillRect(...rectArgs);
+      applyBlendEffect(ctx, rectArgs, 'rgb(128, 128, 128)', settings.shadows * 0.175 * 0.5, 'screen');
     } else if (settings.shadows < 0) { 
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.shadows) * 0.1 * 0.5; 
-      ctx.fillStyle = 'rgb(50, 50, 50)';
-      ctx.fillRect(...rectArgs);
+      applyBlendEffect(ctx, rectArgs, 'rgb(50, 50, 50)', Math.abs(settings.shadows) * 0.1 * 0.5, 'multiply');
     }
-    ctx.globalAlpha = 1.0;
-    ctx.globalCompositeOperation = 'source-over';
 
     // Highlights (Canvas specific)
     if (settings.highlights < 0) { 
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.abs(settings.highlights) * 0.175 * 0.5; 
-      ctx.fillStyle = 'rgb(128, 128, 128)';
-      ctx.fillRect(...rectArgs);
+      applyBlendEffect(ctx, rectArgs, 'rgb(128, 128, 128)', Math.abs(settings.highlights) * 0.175 * 0.5, 'multiply');
     } else if (settings.highlights > 0) { 
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = settings.highlights * 0.1 * 0.5; 
-      ctx.fillStyle = 'rgb(200, 200, 200)';
-      ctx.fillRect(...rectArgs);
+      applyBlendEffect(ctx, rectArgs, 'rgb(200, 200, 200)', settings.highlights * 0.1 * 0.5, 'screen');
     }
-    ctx.globalAlpha = 1.0;
-    ctx.globalCompositeOperation = 'source-over';
 
+    // Color Temperature
     if (settings.colorTemperature !== 0) {
       const temp = settings.colorTemperature / 100;
       const alpha = Math.abs(temp) * 0.2;
-      if (temp > 0) {
-        ctx.fillStyle = `rgba(255, 165, 0, ${alpha})`; 
-      } else {
-        ctx.fillStyle = `rgba(0, 0, 255, ${alpha})`; 
-      }
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.fillRect(...rectArgs);
-      ctx.globalCompositeOperation = 'source-over';
+      const color = temp > 0 ? `rgba(255, 165, 0, ${alpha})` : `rgba(0, 0, 255, ${alpha})`;
+      applyBlendEffect(ctx, rectArgs, color, 1, 'overlay');
     }
 
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
@@ -215,33 +196,23 @@ export function ImageCanvas() {
         if (rgbColor) {
           const saturatedRgb = desaturateRgb(rgbColor, saturation);
           const finalColorHex = rgbToHex(saturatedRgb.r, saturatedRgb.g, saturatedRgb.b);
-
-          ctx.globalCompositeOperation = blendMode;
-          ctx.fillStyle = finalColorHex;
-          ctx.globalAlpha = intensity * TINT_EFFECT_SCALING_FACTOR; 
-          ctx.fillRect(...rectArgs);
+          applyBlendEffect(ctx, rectArgs, finalColorHex, intensity * TINT_EFFECT_SCALING_FACTOR, blendMode);
         }
       }
     };
     
-    // Order: Shadows first, then Highlights
-    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge'); // Shadows tint uses color-dodge
-    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn'); // Highlights tint uses color-burn
+    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
+    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
     
-    ctx.globalAlpha = 1.0;
-    ctx.globalCompositeOperation = 'source-over';
-
+    // Vignette
     if (settings.vignetteIntensity > 0) {
       const centerX = 0; 
       const centerY = 0;
-      
       const vignetteCanvasWidth = finalDestWidth;
       const vignetteCanvasHeight = finalDestHeight;
-
       const radiusX = vignetteCanvasWidth / 2;
       const radiusY = vignetteCanvasHeight / 2;
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
-
       const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
       gradient.addColorStop(0, `rgba(0,0,0,0)`);
       gradient.addColorStop(1, `rgba(0,0,0,${settings.vignetteIntensity})`);
@@ -249,10 +220,10 @@ export function ImageCanvas() {
       ctx.fillRect(...rectArgs);
     }
 
+    // Grain
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
         ctx.save(); 
         ctx.translate(-finalDestWidth/2, -finalDestHeight/2);
-
         ctx.fillStyle = noisePatternRef.current;
         ctx.globalAlpha = settings.grainIntensity * 0.5;
         ctx.globalCompositeOperation = 'overlay';
@@ -261,7 +232,7 @@ export function ImageCanvas() {
     }
 
     ctx.restore();
-  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]); // noisePatternRef added
+  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -312,7 +283,6 @@ export function ImageCanvas() {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             if (ctx) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.filter = 'none'; // Ensure filter is reset when clearing
             }
         }
     }

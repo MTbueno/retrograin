@@ -13,12 +13,12 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-import { FiltersSection } from './FiltersSection';
+// import { FiltersSection } from './FiltersSection'; // Removed as it's empty
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const APP_VERSION = "alpha 0.1l"; // Updated version
+const APP_VERSION = "alpha 0.1m"; // Updated version
 
 export function ControlPanel() {
 
@@ -38,8 +38,8 @@ export function ControlPanel() {
             <AdjustmentsSection />
             <SidebarSeparator />
             <TransformsSection />
-            <SidebarSeparator />
-            <FiltersSection />
+            {/* <SidebarSeparator /> // Removed for FiltersSection
+            <FiltersSection /> // Removed as it became empty */}
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>

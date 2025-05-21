@@ -12,7 +12,7 @@ export interface ImageSettings {
   highlights: number;
   shadows: number;
   blacks: number;
-  hueRotate: number;
+  // hueRotate: number; // Removed
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
@@ -28,7 +28,7 @@ export interface ImageSettings {
   cropZoom: number;
   cropOffsetX: number;
   cropOffsetY: number;
-  filter: string | null;
+  // filter: string | null; // Removed
 }
 
 export const initialImageSettings: ImageSettings = {
@@ -39,7 +39,7 @@ export const initialImageSettings: ImageSettings = {
   highlights: 0,
   shadows: 0,
   blacks: 0,
-  hueRotate: 0,
+  // hueRotate: 0, // Removed
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
@@ -55,7 +55,7 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
-  filter: null,
+  // filter: null, // Removed
 };
 
 export interface ImageObject {
@@ -74,7 +74,7 @@ export type SettingsAction =
   | { type: 'SET_HIGHLIGHTS'; payload: number }
   | { type: 'SET_SHADOWS'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
-  | { type: 'SET_HUE_ROTATE'; payload: number }
+  // | { type: 'SET_HUE_ROTATE'; payload: number } // Removed
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -91,8 +91,8 @@ export type SettingsAction =
   | { type: 'SET_CROP_ZOOM'; payload: number }
   | { type: 'SET_CROP_OFFSET_X'; payload: number }
   | { type: 'SET_CROP_OFFSET_Y'; payload: number }
-  | { type: 'RESET_CROP_AND_ANGLE' } // Renamed from RESET_CROP, though angle is removed
-  | { type: 'APPLY_FILTER'; payload: string | null }
+  | { type: 'RESET_CROP_AND_ANGLE' }
+  // | { type: 'APPLY_FILTER'; payload: string | null } // Removed
   | { type: 'RESET_SETTINGS' }
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings };
 
@@ -112,8 +112,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, shadows: action.payload };
     case 'SET_BLACKS':
       return { ...state, blacks: action.payload };
-    case 'SET_HUE_ROTATE':
-      return { ...state, hueRotate: action.payload };
+    // case 'SET_HUE_ROTATE': // Removed
+    //   return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -146,13 +146,10 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetX: Math.max(-1, Math.min(1, action.payload)) };
     case 'SET_CROP_OFFSET_Y':
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
-    case 'RESET_CROP_AND_ANGLE': // Keep name for now, but angle part is moot
+    case 'RESET_CROP_AND_ANGLE':
       return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
-    case 'APPLY_FILTER':
-      if (action.payload === 'grayscale') {
-        return { ...state, filter: action.payload, saturation: 0, hueRotate: 0 };
-      }
-      return { ...state, filter: action.payload };
+    // case 'APPLY_FILTER': // Removed
+    //   return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
       return { ...initialImageSettings };
     case 'LOAD_SETTINGS':
@@ -309,34 +306,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   ) => {
       ctx.clearRect(0, 0, targetCanvasWidth, targetCanvasHeight);
       ctx.save();
-
-      // Apply CSS-like filters
-      let filterString = '';
-      let baseBrightness = imageSettings.brightness;
-      let baseContrast = imageSettings.contrast;
-
-      if (imageSettings.blacks !== 0) {
-        baseContrast *= (1 - imageSettings.blacks * 0.5);
-        baseBrightness *= (1 + imageSettings.blacks * 0.2);
-        baseContrast = Math.max(0.1, Math.min(3, baseContrast));
-        baseBrightness = Math.max(0.1, Math.min(3, baseBrightness));
-      }
-
-      if (baseBrightness !== 1) filterString += `brightness(${baseBrightness * 100}%) `;
-      if (baseContrast !== 1) filterString += `contrast(${baseContrast * 100}%) `;
-      if (imageSettings.saturation !== 1) filterString += `saturate(${imageSettings.saturation * 100}%) `;
-      if (imageSettings.exposure !== 0) {
-        const exposureEffect = 1 + imageSettings.exposure * 0.5;
-        filterString += `brightness(${exposureEffect * 100}%) `;
-      }
-      if (imageSettings.hueRotate !== 0) filterString += `hue-rotate(${imageSettings.hueRotate}deg) `;
-      if (imageSettings.filter) {
-        if (imageSettings.filter === 'grayscale') filterString += `grayscale(100%) `;
-        if (imageSettings.filter === 'sepia') filterString += `sepia(100%) `;
-        if (imageSettings.filter === 'invert') filterString += `invert(100%) `;
-      }
-      ctx.filter = filterString.trim();
-
+      
       // Transformations
       const { rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY } = imageSettings;
       
@@ -350,49 +320,113 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       sy = Math.max(0, Math.min(sy, imageToDraw.naturalHeight - sHeight));
       sWidth = Math.max(1, sWidth);
       sHeight = Math.max(1, sHeight);
+
+      let drawWidth = sWidth;
+      let drawHeight = sHeight;
+
+      if (rotation === 90 || rotation === 270) {
+        drawWidth = sHeight;
+        drawHeight = sWidth;
+      }
       
       ctx.translate(targetCanvasWidth / 2, targetCanvasHeight / 2);
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scaleX, scaleY);
       
+      // Draw the base image portion
       ctx.drawImage(
         imageToDraw, sx, sy, sWidth, sHeight,
-        -sWidth / 2, -sHeight / 2, sWidth, sHeight
+        -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight
       );
       
-      ctx.filter = 'none'; // Reset CSS filters before canvas-specific effects
-      const rectArgs: [number, number, number, number] = [-sWidth / 2, -sHeight / 2, sWidth, sHeight];
+      const rectArgs: [number, number, number, number] = [-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight];
 
-      // Shadows & Highlights (Canvas specific)
-      if (imageSettings.shadows > 0) { // Brighten shadows
+      // Apply canvas-based adjustments
+      // Exposure
+      if (imageSettings.exposure > 0) {
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = imageSettings.shadows * 0.175 * 0.5;
+        ctx.fillStyle = `rgba(255, 255, 255, ${imageSettings.exposure})`;
+        ctx.fillRect(...rectArgs);
+      } else if (imageSettings.exposure < 0) {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgba(128, 128, 128, ${Math.abs(imageSettings.exposure)})`; // Darken with mid-gray
+        ctx.fillRect(...rectArgs);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Brightness
+      if (imageSettings.brightness > 1) {
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = `rgba(255, 255, 255, ${(imageSettings.brightness - 1) * 0.5})`; // Adjust factor as needed
+        ctx.fillRect(...rectArgs);
+      } else if (imageSettings.brightness < 1) {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgba(0, 0, 0, ${(1 - imageSettings.brightness) * 0.5})`; // Adjust factor
+        ctx.fillRect(...rectArgs);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      
+      // Contrast
+      if (imageSettings.contrast !== 1) {
+        const contrastFactor = (imageSettings.contrast -1) * 0.3; // Max +/- 15% effect for contrast: 1.5 -> 0.15 alpha
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = `rgba(128, 128, 128, ${Math.abs(contrastFactor)})`;
+        ctx.fillRect(...rectArgs);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Saturation (Desaturation only)
+      if (imageSettings.saturation < 1) {
+        ctx.globalCompositeOperation = 'color';
+        ctx.fillStyle = 'gray'; // Will take luminance from below
+        ctx.globalAlpha = 1 - imageSettings.saturation;
+        ctx.fillRect(...rectArgs);
+        ctx.globalAlpha = 1.0; // Reset alpha
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      
+      // Blacks
+      if (imageSettings.blacks > 0) { // Lift blacks
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = `rgba(60, 60, 60, ${imageSettings.blacks * 0.3})`; // Dark gray, subtle effect
+        ctx.fillRect(...rectArgs);
+      } else if (imageSettings.blacks < 0) { // Crush blacks
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgba(30, 30, 30, ${Math.abs(imageSettings.blacks) * 0.2})`; // Very dark gray
+        ctx.fillRect(...rectArgs);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Shadows & Highlights (existing logic)
+      if (imageSettings.shadows > 0) { 
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = imageSettings.shadows * 0.175 * 0.5; 
         ctx.fillStyle = 'rgb(128, 128, 128)';
         ctx.fillRect(...rectArgs);
-      } else if (imageSettings.shadows < 0) { // Darken shadows
+      } else if (imageSettings.shadows < 0) { 
         ctx.globalCompositeOperation = 'multiply';
-        ctx.globalAlpha = Math.abs(imageSettings.shadows) * 0.1 * 0.5;
+        ctx.globalAlpha = Math.abs(imageSettings.shadows) * 0.1 * 0.5; 
         ctx.fillStyle = 'rgb(50, 50, 50)';
         ctx.fillRect(...rectArgs);
       }
       ctx.globalAlpha = 1.0;
       ctx.globalCompositeOperation = 'source-over';
 
-      if (imageSettings.highlights < 0) { // Darken highlights
+      if (imageSettings.highlights < 0) { 
         ctx.globalCompositeOperation = 'multiply';
-        ctx.globalAlpha = Math.abs(imageSettings.highlights) * 0.175 * 0.5;
+        ctx.globalAlpha = Math.abs(imageSettings.highlights) * 0.175 * 0.5; 
         ctx.fillStyle = 'rgb(128, 128, 128)';
         ctx.fillRect(...rectArgs);
-      } else if (imageSettings.highlights > 0) { // Brighten highlights
+      } else if (imageSettings.highlights > 0) { 
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = imageSettings.highlights * 0.1 * 0.5;
+        ctx.globalAlpha = imageSettings.highlights * 0.1 * 0.5; 
         ctx.fillStyle = 'rgb(200, 200, 200)';
         ctx.fillRect(...rectArgs);
       }
       ctx.globalAlpha = 1.0;
       ctx.globalCompositeOperation = 'source-over';
 
-      // Color Temperature
+      // Color Temperature (existing logic)
       if (imageSettings.colorTemperature !== 0) {
         const temp = imageSettings.colorTemperature / 100;
         const alpha = Math.abs(temp) * 0.2;
@@ -403,8 +437,8 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         ctx.globalCompositeOperation = 'source-over';
       }
 
-      // Tint
-      const hexToRgbLocal = (hex: string): { r: number; g: number; b: number } | null => { /* ... from ImageCanvas ... */ 
+      // Tint (existing logic)
+      const hexToRgbLocal = (hex: string): { r: number; g: number; b: number } | null => {
           const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
           return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
       };
@@ -417,9 +451,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
           b: Math.round(rgb.b * saturation + gray * (1 - saturation)),
         };
       };
-
-      const TINT_EFFECT_SCALING_FACTOR_LOCAL = 0.3 * 0.6; // Adjusted factor
-
+      const TINT_EFFECT_SCALING_FACTOR_LOCAL = 0.3 * 0.6; 
       const applyTintWithSaturationLocal = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
           if (intensity > 0 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') {
               const rgbColor = hexToRgbLocal(baseColorHex);
@@ -438,12 +470,12 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       ctx.globalAlpha = 1.0;
       ctx.globalCompositeOperation = 'source-over';
 
-      // Vignette
+      // Vignette (existing logic)
       if (imageSettings.vignetteIntensity > 0) {
         const centerX = 0;
         const centerY = 0;
-        const radiusX = sWidth / 2;
-        const radiusY = sHeight / 2;
+        const radiusX = drawWidth / 2;
+        const radiusY = drawHeight / 2;
         const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
         const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
         gradient.addColorStop(0, `rgba(0,0,0,0)`);
@@ -452,23 +484,19 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         ctx.fillRect(...rectArgs);
       }
 
-      // Grain (simplified for offscreen, assumes noisePatternRef is not available or needed here)
+      // Grain (existing logic, potentially simplified for offscreen)
       if (imageSettings.grainIntensity > 0) {
-        // For offscreen, a simple pixel manipulation might be too slow.
-        // A pre-generated noise pattern is better. For now, this part might be less effective offscreen.
-        // A full solution would involve passing the noise pattern or regenerating it.
-        // This is a placeholder to acknowledge grain.
         ctx.save();
-        ctx.globalAlpha = imageSettings.grainIntensity * 0.1; // much reduced grain for performance
-        for (let y = 0; y < targetCanvasHeight; y += 4) {
+        ctx.globalAlpha = imageSettings.grainIntensity * 0.1; 
+        for (let y = 0; y < targetCanvasHeight; y += 4) { // Use targetCanvasHeight/Width for grain bounds
             for (let x = 0; x < targetCanvasWidth; x += 4) {
-                const noise = Math.random() * 50;
+                const noise = Math.floor(Math.random() * 50);
                 ctx.fillStyle = `rgba(${noise},${noise},${noise},0.5)`;
-                ctx.fillRect(x - sWidth/2, y - sHeight/2, 4, 4);
+                ctx.fillRect(x - targetCanvasWidth/2, y - targetCanvasHeight/2, 4, 4);
             }
         }
         ctx.globalCompositeOperation = 'overlay';
-        ctx.fillRect(...rectArgs); // This might not be ideal for grain
+        ctx.fillRect(-targetCanvasWidth/2, -targetCanvasHeight/2, targetCanvasWidth, targetCanvasHeight);
         ctx.restore();
       }
 
@@ -485,13 +513,12 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     return new Promise((resolve) => {
       const offscreenCanvas = document.createElement('canvas');
       
-      // Determine canvas dimensions based on crop and rotation
       let sWidth = imageElement.naturalWidth / settings.cropZoom;
       let sHeight = imageElement.naturalHeight / settings.cropZoom;
 
       let canvasBufferWidth, canvasBufferHeight;
       if (settings.rotation === 90 || settings.rotation === 270) {
-          canvasBufferWidth = sHeight * Math.abs(settings.scaleY);
+          canvasBufferWidth = sHeight * Math.abs(settings.scaleY); // scaleY/X from settings
           canvasBufferHeight = sWidth * Math.abs(settings.scaleX);
       } else {
           canvasBufferWidth = sWidth * Math.abs(settings.scaleX);
@@ -546,3 +573,5 @@ export function useImageEditor() {
   }
   return context;
 }
+
+    

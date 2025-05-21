@@ -4,10 +4,10 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Minus, Plus } from 'lucide-react'; // Added Minus, Plus for clarity if needed
+import { Sun, Contrast, Droplets, Aperture, /* Palette, */ CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Minus, Plus } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider'; // Assuming this is your custom component
-import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils'; // Assuming you move these here or to utils
+import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
+import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
@@ -15,13 +15,14 @@ export function AdjustmentsSection() {
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
           'highlights' | 'shadows' | 'blacks' | 
-          'hueRotate' | 'vignetteIntensity' | 'grainIntensity' | 
+          // 'hueRotate' | // Removed
+          'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 
           'tintShadowsIntensity' | 'tintShadowsSaturation' |
           'tintHighlightsIntensity' | 'tintHighlightsSaturation',
     value: number
   ) => {
-    if (originalImage) setIsPreviewing(true); // Ensure preview mode is on during slider change
+    if (originalImage) setIsPreviewing(true);
 
     switch (type) {
       case 'brightness':
@@ -45,9 +46,9 @@ export function AdjustmentsSection() {
       case 'blacks':
         dispatchSettings({ type: 'SET_BLACKS', payload: value });
         break;
-      case 'hueRotate':
-        dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
-        break;
+      // case 'hueRotate': // Removed
+      //   dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
+      //   break;
       case 'vignetteIntensity':
         dispatchSettings({ type: 'SET_VIGNETTE_INTENSITY', payload: value });
         break;
@@ -87,13 +88,13 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    if (originalImage) setIsPreviewing(false); // Full render after color change
+    if (originalImage) setIsPreviewing(false);
   };
   
   const generalAdjustments = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0.5, max: 1.5, step: 0.01 },
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 1, step: 0.01 }, // Range 0-1 for desaturation
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
     { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
@@ -101,7 +102,7 @@ export function AdjustmentsSection() {
   ];
 
   const colorAdjustments = [
-    { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 },
+    // { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 }, // Removed
     { id: 'colorTemperature', label: 'Temperature', icon: Thermometer, value: settings.colorTemperature, min: -100, max: 100, step: 1 },
   ];
   
@@ -119,9 +120,9 @@ export function AdjustmentsSection() {
         </Label>
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
-           control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
-           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}` : // Removed % for these
-           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider ? `${Math.round(control.value * 100)}%` :
+           // control.id === 'hueRotate' ? `${Math.round(control.value)}°` : // Removed
+           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}` :
+           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || control.id === 'saturation' ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
         </span>
@@ -192,12 +193,12 @@ export function AdjustmentsSection() {
             onColorChange={(newColor) => {
               handleTintColorChange(tonalRange, newColor);
             }}
-            className="h-4" // Original height was 16, can be adjusted
+            className="h-4"
           />
           {renderSlider({
             id: saturationControlId,
-            label: `Saturation`, // Removed "Tint" prefix for brevity
-            icon: Droplets, // Using Droplets icon for saturation
+            label: `Saturation`,
+            icon: Droplets,
             value: saturationValue,
             min: 0, max: 1, step: 0.01
           }, false, true)}
@@ -228,3 +229,5 @@ export function AdjustmentsSection() {
     </div>
   );
 }
+
+    
