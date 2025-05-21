@@ -57,10 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     setLoading(true); // Indicate an auth operation is starting
 
-    const isPwaMode = typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches;
+    // Check for PWA-like modes (standalone or minimal-ui)
+    const isPwaLikeMode = typeof window !== 'undefined' && 
+                          (window.matchMedia('(display-mode: standalone)').matches || 
+                           window.matchMedia('(display-mode: minimal-ui)').matches);
 
-    if (isPwaMode) {
-      // PWA mode: Use signInWithRedirect
+    if (isPwaLikeMode) {
+      // PWA-like mode: Use signInWithRedirect
       try {
         await signInWithRedirect(auth, googleProvider);
         // Redirect will occur. setLoading(false) will be handled by onAuthStateChanged on return.
@@ -87,9 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
           toast({
             title: 'Login Popup Blocked',
-            description: 'The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site, or try adding this app to your homescreen (if available) for a different login experience.',
+            description: 'The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site. If you are trying to run this as an installed app, this method might not work reliably.',
             variant: 'destructive',
-            duration: 8000, // Longer duration for this important message
+            duration: 8000,
           });
         } else {
           toast({
@@ -98,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             variant: 'destructive',
           });
         }
-        // setUser(null); // onAuthStateChanged should handle this if auth state truly changes to null
         setLoading(false); // Reset loading if popup fails
       }
     }
