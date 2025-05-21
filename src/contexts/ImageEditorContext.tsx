@@ -29,8 +29,6 @@ export interface ImageSettings {
   cropZoom: number;
   cropOffsetX: number;
   cropOffsetY: number;
-  hueRotate: number;
-  filter: string | null;
 }
 
 export const initialImageSettings: ImageSettings = {
@@ -57,8 +55,6 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
-  hueRotate: 0,
-  filter: null,
 };
 
 export interface ImageObject {
@@ -95,8 +91,6 @@ export type SettingsAction =
   | { type: 'SET_CROP_OFFSET_X'; payload: number }
   | { type: 'SET_CROP_OFFSET_Y'; payload: number }
   | { type: 'RESET_CROP_AND_ANGLE' }
-  | { type: 'SET_HUE_ROTATE'; payload: number }
-  | { type: 'APPLY_FILTER'; payload: string | null }
   | { type: 'RESET_SETTINGS' }
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings };
 
@@ -152,10 +146,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
     case 'RESET_CROP_AND_ANGLE': 
       return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
-    case 'SET_HUE_ROTATE':
-      return { ...state, hueRotate: action.payload };
-    case 'APPLY_FILTER':
-      return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
       return { ...initialImageSettings };
     case 'LOAD_SETTINGS':
@@ -166,7 +156,7 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
 }
 
 export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings: ImageSettings) => {
-  ctx.filter = 'none';
+  ctx.filter = 'none'; 
   const filters: string[] = [];
 
   let finalBrightness = settings.brightness;
@@ -197,9 +187,6 @@ export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings
   if (Math.abs(filterContrast - 1) > 0.001) filters.push(`contrast(${filterContrast * 100}%)`);
   if (Math.abs(filterSaturation - 1) > 0.001) filters.push(`saturate(${filterSaturation * 100}%)`);
   
-  if (Math.abs(settings.hueRotate) > 0.001) filters.push(`hue-rotate(${settings.hueRotate}deg)`);
-  if (settings.filter) filters.push(settings.filter);
-
   const trimmedFilterString = filters.join(' ').trim();
   if (trimmedFilterString) {
     ctx.filter = trimmedFilterString;
@@ -207,6 +194,8 @@ export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings
 };
 
 const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
+const TINT_EFFECT_SCALING_FACTOR = 0.6;
+const NOISE_CANVAS_SIZE_FOR_CONTEXT = 250; // Para consistência com ImageCanvas
 
 const drawImageWithSettingsToContext = (
   _ctx: CanvasRenderingContext2D,
@@ -214,7 +203,7 @@ const drawImageWithSettingsToContext = (
   imageSettings: ImageSettings,
   targetCanvasWidth: number,
   targetCanvasHeight: number,
-  noiseImageData: ImageData | null
+  noiseImageData: ImageData | null 
 ) => {
     _ctx.clearRect(0, 0, targetCanvasWidth, targetCanvasHeight);
     _ctx.save();
@@ -258,9 +247,13 @@ const drawImageWithSettingsToContext = (
 
     _ctx.filter = 'none'; 
 
-    const effectRectArgs: [number, number, number, number] = [ Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight ];
-    const TINT_EFFECT_SCALING_FACTOR = 0.6; // Increased strength
-
+    const effectRectArgs: [number, number, number, number] = [ 
+        Math.round(-destDrawWidth / 2), 
+        Math.round(-destDrawHeight / 2), 
+        destDrawWidth, 
+        destDrawHeight 
+    ];
+    
     const applyBlendEffect = (
         ctxForBlend: CanvasRenderingContext2D,
         rectArgs: [number, number, number, number],
@@ -298,7 +291,7 @@ const drawImageWithSettingsToContext = (
     }
 
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
-      if (intensity > 0.001 && baseColorHex && baseColorHex !== '') { // Removed #000000 check
+      if (intensity > 0.001 && baseColorHex && baseColorHex !== '') { 
         const rgbColor = hexToRgb(baseColorHex);
         if (rgbColor) {
           const saturatedRgb = desaturateRgb(rgbColor, saturationFactor);
@@ -326,8 +319,9 @@ const drawImageWithSettingsToContext = (
 
     if (grainIntensity > 0.001 && noiseImageData) {
         const tempNoisePatternCanvas = document.createElement('canvas');
-        tempNoisePatternCanvas.width = noiseImageData.width;
-        tempNoisePatternCanvas.height = noiseImageData.height;
+        tempNoisePatternCanvas.width = noiseImageData.width > 0 ? noiseImageData.width : NOISE_CANVAS_SIZE_FOR_CONTEXT;
+        tempNoisePatternCanvas.height = noiseImageData.height > 0 ? noiseImageData.height : NOISE_CANVAS_SIZE_FOR_CONTEXT;
+        
         const tempNoiseCtx = tempNoisePatternCanvas.getContext('2d');
 
         if (tempNoiseCtx) {
@@ -553,7 +547,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         resolve(null);
         return;
       }
-
       drawImageWithSettingsToContext(ctx, imageElement, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
       resolve(offscreenCanvas.toDataURL(type, quality));
     });
@@ -596,3 +589,5 @@ export function useImageEditor() {
   }
   return context;
 }
+
+    

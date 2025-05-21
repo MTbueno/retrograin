@@ -1,13 +1,13 @@
 
 "use client";
 
-import React, { useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 const PREVIEW_SCALE_FACTOR = 0.5;
-const NOISE_CANVAS_SIZE = 100;
+const NOISE_CANVAS_SIZE = 250; // Aumentado para reduzir tiling
 const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075;
 const TINT_EFFECT_SCALING_FACTOR = 0.6;
 
@@ -29,13 +29,13 @@ export function ImageCanvas() {
     settings,
     canvasRef,
     isPreviewing,
-    noiseImageDataRef,
+    noiseImageDataRef, // Agora espera ImageData
     applyCssFilters,
   } = useImageEditor();
 
   useEffect(() => {
-    const currentCanvas = canvasRef.current;
-    if (typeof window !== 'undefined' && currentCanvas && !noiseImageDataRef.current) {
+    // Cria o ImageData do ruído uma vez e armazena no contexto
+    if (typeof window !== 'undefined' && canvasRef.current && !noiseImageDataRef.current) {
       const noiseCv = document.createElement('canvas');
       noiseCv.width = NOISE_CANVAS_SIZE;
       noiseCv.height = NOISE_CANVAS_SIZE;
@@ -49,12 +49,13 @@ export function ImageCanvas() {
         }
         noiseCtx.putImageData(imageData, 0, 0);
         noiseImageDataRef.current = noiseCtx.getImageData(0, 0, NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
-        console.log("Noise ImageData created and stored in context ref for ImageCanvas.");
+        console.log("Noise ImageData (", NOISE_CANVAS_SIZE, "x", NOISE_CANVAS_SIZE, ") created and stored in context ref.");
       } else {
-        console.warn("Could not get 2D context for noise canvas generation in ImageCanvas.");
+        console.warn("Could not get 2D context for noise canvas generation.");
       }
     }
-  }, [canvasRef.current]); // Depend on canvasRef.current to re-run if the canvas element instance changes
+  }, [canvasRef, noiseImageDataRef]);
+
 
   const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
@@ -73,6 +74,7 @@ export function ImageCanvas() {
 
     let contentWidth = originalImage.naturalWidth / cropZoom;
     let contentHeight = originalImage.naturalHeight / cropZoom;
+    
     let sx = (cropOffsetX * 0.5 + 0.5) * (originalImage.naturalWidth - contentWidth);
     let sy = (cropOffsetY * 0.5 + 0.5) * (originalImage.naturalHeight - contentHeight);
 
@@ -110,42 +112,50 @@ export function ImageCanvas() {
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
     
-    // Set canvas buffer dimensions based on physical size (limited for performance)
-    // These dimensions do NOT change with isPreviewing
+    // Definir as dimensões do buffer do canvas. Estas NÃO mudam com isPreviewing.
     canvas.width = Math.round(canvasPhysicalWidth);
     canvas.height = Math.round(canvasPhysicalHeight);
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
 
-    // Apply preview scaling internally if needed
+    // Aplicar escala de PREVIEW INTERNAMENTE no contexto, se necessário
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
+    
+    // Calcular o centro e as dimensões de desenho EFETIVAS após a escala de preview.
+    // O "espaço de desenho" é o tamanho do buffer do canvas (canvas.width/height)
+    // dividido pelo fator de escala do preview, se aplicável.
+    const effectiveDrawAreaWidth = canvas.width / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1);
+    const effectiveDrawAreaHeight = canvas.height / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1);
+    const effectiveCenterX = effectiveDrawAreaWidth / 2;
+    const effectiveCenterY = effectiveDrawAreaHeight / 2;
 
-    // Translate to center of the potentially scaled context
-    // The drawing area itself is canvas.width/height
-    ctx.translate(Math.round(canvas.width / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1) / 2), Math.round(canvas.height / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1) / 2) );
+    ctx.translate(Math.round(effectiveCenterX), Math.round(effectiveCenterY));
     
     if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
     if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
     
-    // destDrawWidthForEffects and destDrawHeightForEffects are the dimensions of the content
-    // *before* internal preview scaling is applied to the context.
-    // These are used as the target size for drawImage and effect rectangles.
-    const destDrawWidthForEffects = Math.round((settings.rotation === 90 || settings.rotation === 270) ? canvasPhysicalHeight : canvasPhysicalWidth);
-    const destDrawHeightForEffects = Math.round((settings.rotation === 90 || settings.rotation === 270) ? canvasPhysicalWidth : canvasPhysicalHeight);
-
-    ctx.filter = 'none'; // Reset before applying CSS filters
+    // Dimensões de desenho da imagem para preencher a área efetiva.
+    const destDrawWidthForEffects = Math.round(
+      (rotation === 90 || rotation === 270) ? effectiveDrawAreaHeight : effectiveDrawAreaWidth
+    );
+    const destDrawHeightForEffects = Math.round(
+      (rotation === 90 || rotation === 270) ? effectiveDrawAreaWidth : effectiveDrawAreaHeight
+    );
+    
+    ctx.filter = 'none'; 
     applyCssFilters(ctx, settings); 
     
     ctx.drawImage(
       originalImage,
       sx, sy, contentWidth, contentHeight,
-      Math.round(-destDrawWidthForEffects / 2), Math.round(-destDrawHeightForEffects / 2), destDrawWidthForEffects, destDrawHeightForEffects
+      Math.round(-destDrawWidthForEffects / 2), Math.round(-destDrawHeightForEffects / 2), 
+      destDrawWidthForEffects, destDrawHeightForEffects
     );
 
-    ctx.filter = 'none'; // Reset after drawing the base image with CSS filters
+    ctx.filter = 'none'; 
 
     const effectRectArgs: [number, number, number, number] = [ 
       Math.round(-destDrawWidthForEffects / 2), 
@@ -154,7 +164,6 @@ export function ImageCanvas() {
       destDrawHeightForEffects 
     ];
     
-    // Apply direct canvas effects (Shadows, Highlights, Color Temp, Tints, Vignette, Grain)
     const { highlights, shadows } = settings;
     const applyBlendEffect = (
         ctxForBlend: CanvasRenderingContext2D,
@@ -222,18 +231,21 @@ export function ImageCanvas() {
     const currentNoiseImageData = noiseImageDataRef.current;
     if (grainIntensity > 0.001 && currentNoiseImageData) {
         const tempNoiseCanvas = document.createElement('canvas');
-        tempNoiseCanvas.width = currentNoiseImageData.width;
+        // O canvas temporário para o padrão sempre usa as dimensões do ImageData
+        tempNoiseCanvas.width = currentNoiseImageData.width; 
         tempNoiseCanvas.height = currentNoiseImageData.height;
         const tempNoiseCtx = tempNoiseCanvas.getContext('2d');
 
         if (tempNoiseCtx) {
             tempNoiseCtx.putImageData(currentNoiseImageData, 0, 0);
-            const liveNoisePattern = ctx.createPattern(tempNoiseCanvas, 'repeat');
+            // O createPattern usa o contexto do canvas principal (ctx),
+            // que já está escalado se isPreviewing for true.
+            // Isso fará com que o padrão pareça mais fino no preview.
+            const liveNoisePattern = ctx.createPattern(tempNoiseCanvas, 'repeat'); 
             if (liveNoisePattern) {
                 ctx.save();
                 ctx.fillStyle = liveNoisePattern;
-                // Adjust opacity for preview
-                ctx.globalAlpha = grainIntensity * (isPreviewing ? 0.2 : 0.5); // Reduced preview grain
+                ctx.globalAlpha = grainIntensity * (isPreviewing ? 0.2 : 1.0); 
                 ctx.globalCompositeOperation = 'overlay';
                 ctx.fillRect(...effectRectArgs);
                 ctx.restore(); 
@@ -247,12 +259,12 @@ export function ImageCanvas() {
       console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
     }
 
-    ctx.restore();
+    ctx.restore(); // Restaura o save() do início que pode ter a escala de preview
   }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFilters]);
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 150),
-    [drawImageImmediately, isPreviewing] // isPreviewing is important here
+    [drawImageImmediately, isPreviewing]
   );
 
   useEffect(() => {
@@ -268,7 +280,7 @@ export function ImageCanvas() {
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.filter = 'none'; // Clear filter if no image
+          ctx.filter = 'none'; 
         }
       }
     }
@@ -291,5 +303,5 @@ export function ImageCanvas() {
     />
   );
 }
-
+    
     
