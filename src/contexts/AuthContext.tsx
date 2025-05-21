@@ -4,7 +4,7 @@
 import type { User } from 'firebase/auth';
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, googleProvider, signOut, signInWithRedirect, getRedirectResult, onAuthStateChanged } from '@/lib/firebase'; // Changed firebaseSignOut to signOut
+import { auth, googleProvider, signOut, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
@@ -22,19 +22,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
-    setLoading(true); // Explicitly set loading true at the start of effect
+    // setLoading(true); // Already true by default
 
+    // Check for redirect result first
     getRedirectResult(auth)
       .then((result) => {
         if (result && result.user) {
           // User signed in via redirect.
-          // onAuthStateChanged will handle setting the user state.
-          toast({ title: 'Logged In!', description: 'Successfully signed in with Google after redirect.' });
+          // onAuthStateChanged will handle setting the user state and final loading state.
+          toast({ title: 'Logged In!', description: 'Successfully signed in with Google via redirect.' });
         }
-        // If result is null, no redirect operation was pending or it was handled.
       })
       .catch((error) => {
         console.error("Error processing redirect result:", error);
+        // Avoid toast for common "no-redirect" cases, but show for actual errors
         if (error.code !== 'auth/redirect-cancelled' && 
             error.code !== 'auth/redirect-cancelled-by-user' && 
             error.code !== 'auth/no-redirect-operation') {
@@ -54,25 +55,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     setLoading(true);
     try {
-      // Always use signInWithRedirect
-      await signInWithRedirect(auth, googleProvider);
-      // Redirect will occur. The useEffect above will handle the result when the app reloads.
-      // setLoading(false) is not needed here as the page will redirect.
+      const isPwaMode = typeof window !== 'undefined' &&
+        (window.matchMedia('(display-mode: standalone)').matches ||
+          window.matchMedia('(display-mode: minimal-ui)').matches);
+
+      if (isPwaMode) {
+        await signInWithRedirect(auth, googleProvider);
+        // Redirect will occur. Loading state will be handled by useEffect processing redirect result
+        // and onAuthStateChanged setting loading to false.
+      } else {
+        // Use signInWithPopup for non-PWA contexts
+        const result = await signInWithPopup(auth, googleProvider);
+        // setUser(result.user); // This will be handled by onAuthStateChanged
+        toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
+        // setLoading(false) will be handled by onAuthStateChanged when user state updates
+      }
     } catch (error: any) {
-      console.error("Error initiating sign in with redirect: ", error);
+      console.error("Error signing in: ", error);
+      let description = error.message || 'Could not sign in with Google.';
+      if (error.code === 'auth/popup-blocked') {
+        description = "The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site.";
+      }
       toast({
         title: 'Login Failed',
-        description: error.message || 'Could not initiate sign in with Google via redirect.',
+        description,
         variant: 'destructive',
       });
-      setLoading(false); // Reset loading if redirect initiation itself fails
+      setLoading(false); // Set loading to false on error to re-enable UI
     }
   };
 
   const signOutUser = async () => {
     setLoading(true);
     try {
-      await signOut(auth); // Use signOut directly
+      await signOut(auth);
       // User state will be updated to null by onAuthStateChanged, 
       // which also sets loading to false.
       toast({ title: 'Logged Out', description: 'You have been successfully signed out.' });
@@ -83,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || 'Could not sign out. Please try again.',
         variant: 'destructive',
       });
-      setLoading(false); // Explicitly set loading false on sign out error as onAuthStateChanged might not fire if user was already null
+      setLoading(false); // Explicitly set loading false on sign out error
     }
   };
 
