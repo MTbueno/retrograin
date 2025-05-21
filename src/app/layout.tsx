@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PwaRegistry } from '@/components/PwaRegistry';
-import { PwaInstallPrompt } from '@/components/PwaInstallPrompt'; // Import PwaInstallPrompt
+// PwaInstallPrompt import removed
 import { AuthProvider } from '@/contexts/AuthContext';
 import Script from 'next/script'; 
 
@@ -45,7 +45,7 @@ export default function RootLayout({
           <AppLayout>{children}</AppLayout>
         </AuthProvider>
         <PwaRegistry />
-        <PwaInstallPrompt /> {/* Add PwaInstallPrompt here */}
+        {/* PwaInstallPrompt component removed from here */}
         <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
         <Script
           src="https://accounts.google.com/gsi/client"
@@ -57,5 +57,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-    
