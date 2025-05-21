@@ -11,18 +11,6 @@ const NOISE_CANVAS_SIZE = 250;
 const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075;
 const TINT_EFFECT_SCALING_FACTOR = 0.6;
 
-function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
-  let timeoutId: NodeJS.Timeout | null = null;
-  return (...args: Parameters<F>): void => {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func(...args);
-    }, waitFor);
-  };
-}
-
 export function ImageCanvas() {
   const context = useImageEditor();
   const {
@@ -31,14 +19,12 @@ export function ImageCanvas() {
     canvasRef,
     isPreviewing,
     noiseImageDataRef,
-    applyCssFiltersToContext,
+    applyCssFilters, // Corrected: was applyCssFiltersToContext
   } = context;
 
   useEffect(() => {
-    // Creates the noise ImageData once and stores it in the context ref
     if (typeof window !== 'undefined' && !noiseImageDataRef.current) {
       try {
-        // ImageData constructor is preferred if available and suits the need for raw pixel data
         const imageData = new ImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
@@ -51,8 +37,6 @@ export function ImageCanvas() {
         noiseImageDataRef.current = imageData;
         console.log(`SUCCESS: Noise ImageData (${NOISE_CANVAS_SIZE}x${NOISE_CANVAS_SIZE}) created and stored in context ref.`);
       } catch (e) {
-         // Fallback for environments where ImageData constructor might not be ideal/available without a context
-         // This path is less likely for modern browsers but provides a fallback.
         console.warn("ImageData constructor failed, trying with temporary canvas for noise.", e);
         const tempCanvasForNoise = document.createElement('canvas');
         tempCanvasForNoise.width = NOISE_CANVAS_SIZE;
@@ -65,7 +49,7 @@ export function ImageCanvas() {
             const rand = Math.floor(Math.random() * 256);
             data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255;
           }
-          noiseCtx.putImageData(imageData,0,0); // Draw it to get it from the context if needed
+          noiseCtx.putImageData(imageData,0,0);
           noiseImageDataRef.current = noiseCtx.getImageData(0,0,NOISE_CANVAS_SIZE,NOISE_CANVAS_SIZE);
           console.log(`SUCCESS (fallback): Noise ImageData (${NOISE_CANVAS_SIZE}x${NOISE_CANVAS_SIZE}) created via temp canvas and stored.`);
         } else {
@@ -160,7 +144,7 @@ export function ImageCanvas() {
     );
     
     ctx.filter = 'none'; 
-    applyCssFiltersToContext(ctx, settings); 
+    applyCssFilters(ctx, settings); // Corrected: was applyCssFiltersToContext
     
     ctx.drawImage(
       originalImage,
@@ -244,8 +228,9 @@ export function ImageCanvas() {
     const currentNoiseImageData = noiseImageDataRef.current;
     if (grainIntensity > 0.001 && currentNoiseImageData) {
         const tempNoiseCanvas = document.createElement('canvas');
-        tempNoiseCanvas.width = currentNoiseImageData.width; 
-        tempNoiseCanvas.height = currentNoiseImageData.height;
+        tempNoiseCanvas.width = currentNoiseImageData.width > 0 ? currentNoiseImageData.width : NOISE_CANVAS_SIZE;
+        tempNoiseCanvas.height = currentNoiseImageData.height > 0 ? currentNoiseImageData.height : NOISE_CANVAS_SIZE;
+        
         const tempNoiseCtx = tempNoiseCanvas.getContext('2d');
 
         if (tempNoiseCtx) {
@@ -254,11 +239,11 @@ export function ImageCanvas() {
             if (liveNoisePattern) {
                 ctx.save();
                 ctx.fillStyle = liveNoisePattern;
-                ctx.globalAlpha = grainIntensity * 0.2; 
+                ctx.globalAlpha = grainIntensity * 0.2; // Preview grain opacity
                 ctx.globalCompositeOperation = 'overlay';
                 ctx.fillRect(...effectRectArgs);
                 ctx.restore(); 
-                console.log("Grain applied in preview. Intensity:", grainIntensity * 0.2, "Pattern:", liveNoisePattern);
+                // console.log("Grain applied in preview. Intensity:", grainIntensity * 0.2);
             } else {
                 console.warn("Could not create grain pattern for live preview from tempNoiseCanvas:", tempNoiseCanvas);
             }
@@ -266,15 +251,31 @@ export function ImageCanvas() {
             console.warn("Could not get context for temporary noise canvas for preview.");
         }
     } else if (grainIntensity > 0.001 && !currentNoiseImageData) {
-      console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
+      // console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
     }
 
     ctx.restore();
-  }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFiltersToContext]);
+  }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFilters]);
 
   const debouncedDrawImage = useMemo(
-    () => debounce(drawImageImmediately, isPreviewing ? 30 : 150),
-    [drawImageImmediately, isPreviewing]
+    () => {
+      const DEBOUNCE_TIME_PREVIEW = 30;
+      const DEBOUNCE_TIME_FINAL = 150;
+      
+      let timeoutId: NodeJS.Timeout | null = null;
+      
+      const debouncedFunction = (...args: any[]) => {
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => {
+          drawImageImmediately();
+        }, isPreviewing ? DEBOUNCE_TIME_PREVIEW : DEBOUNCE_TIME_FINAL);
+      };
+      
+      return debouncedFunction;
+    },
+    [drawImageImmediately, isPreviewing] 
   );
 
   useEffect(() => {
@@ -314,6 +315,8 @@ export function ImageCanvas() {
   );
 }
     
+    
+
     
 
     
