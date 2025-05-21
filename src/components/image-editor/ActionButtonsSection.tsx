@@ -39,13 +39,13 @@ export function ActionButtonsSection() {
   const { user: firebaseUser } = useAuth();
 
   const [isGapiClientInitialized, setIsGapiClientInitialized] = useState(false);
-  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false); // True if GAPI and GIS are ready for token client init
+  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false);
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
   const [isConnectingOrSavingToDrive, setIsConnectingOrSavingToDrive] = useState(false);
 
 
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
-    setIsConnectingOrSavingToDrive(false);
+    setIsConnectingOrSavingToDrive(false); // Reset connecting state
 
     if (tokenResponse && tokenResponse.access_token) {
       if (window.gapi && window.gapi.client) {
@@ -61,7 +61,7 @@ export function ActionButtonsSection() {
           console.error("Token do Drive recebido, mas isDriveAuthenticated() ainda é falso após um atraso.");
           toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização.', variant: 'destructive' });
         }
-      }, 500); // 500ms delay
+      }, 500);
     } else {
       setIsDriveAuthorized(false);
       const errorDescription = (tokenResponse as any)?.error_description || "Falha ao obter token de acesso do Google Drive.";
@@ -73,44 +73,30 @@ export function ActionButtonsSection() {
 
   useEffect(() => {
     let gapiAttempts = 0;
-    const tryLoadGapi = () => {
-      if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
+    const tryLoadGapiAndGis = () => {
+      if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function' && typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
         loadGapi((gapiSuccess) => {
           setIsGapiClientInitialized(gapiSuccess);
           if (gapiSuccess) {
-            // GAPI client is ready, now check/wait for GIS and then init token client
-            let gisAttempts = 0;
-            const checkGisAndInitTokenClient = () => {
-              if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
-                // GIS is loaded
-                const tokenClientSuccess = initTokenClient(handleTokenResponse);
-                setIsDriveSdkReady(tokenClientSuccess); // SDK is ready if GAPI loaded and token client init attempt was made
-                if (tokenClientSuccess && isDriveAuthenticated()) {
-                  setIsDriveAuthorized(true); // Check if already authorized from a previous session
-                }
-              } else if (gisAttempts < 20) { // Retry for GIS up to 10 seconds
-                gisAttempts++;
-                setTimeout(checkGisAndInitTokenClient, 500);
-              } else {
-                console.error("GIS (Google Identity Services) não carregou a tempo.");
-                setIsDriveSdkReady(false);
-              }
-            };
-            checkGisAndInitTokenClient();
+            const tokenClientSuccess = initTokenClient(handleTokenResponse);
+            setIsDriveSdkReady(tokenClientSuccess);
+            if (tokenClientSuccess && isDriveAuthenticated()) {
+              setIsDriveAuthorized(true);
+            }
           } else {
-            setIsDriveSdkReady(false); // GAPI client.init failed
+            setIsDriveSdkReady(false);
           }
         });
-      } else if (gapiAttempts < 20) { // Retry for GAPI script itself up to 10 seconds
+      } else if (gapiAttempts < 40) { // Retry for up to 20 seconds (40 * 500ms)
         gapiAttempts++;
-        setTimeout(tryLoadGapi, 500);
+        setTimeout(tryLoadGapiAndGis, 500);
       } else {
-        console.error("GAPI script (api.js) não carregou a tempo.");
+        console.error("GAPI ou GIS (Google Identity Services) não carregaram a tempo.");
         setIsGapiClientInitialized(false);
         setIsDriveSdkReady(false);
       }
     };
-    tryLoadGapi();
+    tryLoadGapiAndGis();
   }, [handleTokenResponse]);
 
 
@@ -128,11 +114,44 @@ export function ActionButtonsSection() {
       setIsConnectingOrSavingToDrive(true);
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
       requestAccessToken();
-      // handleTokenResponse will set isConnectingOrSavingToDrive to false or handle errors
     } else {
-      saveToDrive(); // Already authorized, proceed to save
+      saveToDrive();
     }
   };
+
+  const createExifWithComment = (originalExif: any): string | null => {
+    try {
+      const newExifObj: any = { "0th": {}, "Exif": {} };
+
+      if (originalExif) {
+        if (originalExif["0th"]) {
+          newExifObj["0th"] = { ...originalExif["0th"] };
+        }
+        if (originalExif["Exif"]) {
+          newExifObj["Exif"] = { ...originalExif["Exif"] };
+        } else {
+           newExifObj["Exif"] = {}; // Ensure Exif IFD exists for UserComment
+        }
+      } else {
+        newExifObj["Exif"] = {}; // Ensure Exif IFD exists for UserComment even if no original EXIF
+      }
+      
+      // Add UserComment
+      newExifObj["Exif"][piexif.ExifIFD.UserComment] = piexif.helper.UserComment.dump("Edited in RetroGrain", "ascii");
+
+      // Clean up empty IFDs to avoid issues with piexif.dump if they are truly empty
+      if (Object.keys(newExifObj["0th"]).length === 0) delete newExifObj["0th"];
+      if (Object.keys(newExifObj["Exif"]).length === 0) delete newExifObj["Exif"];
+      
+      if (Object.keys(newExifObj).length === 0) return null; // No data to dump
+
+      return piexif.dump(newExifObj);
+    } catch (error) {
+      console.warn("Error creating EXIF data with comment:", error);
+      return null;
+    }
+  };
+
 
   const saveToDrive = async () => {
     const activeImgObject = allImages.find(img => img.id === activeImageId);
@@ -149,17 +168,17 @@ export function ActionButtonsSection() {
       if (folderId) {
         let currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
 
-        if (currentImageURI && activeImgObject.exifData) {
-            try {
-                const exifBytes = piexif.dump(activeImgObject.exifData);
-                currentImageURI = piexif.insert(exifBytes, currentImageURI);
-            } catch (exifError) {
-                console.warn("Could not insert EXIF data for Drive upload:", exifError);
-                toast({ title: 'Aviso EXIF', description: 'Não foi possível reanexar dados EXIF à imagem do Drive.', variant: 'default' });
-            }
-        }
-
         if (currentImageURI) {
+            const exifBytes = createExifWithComment(activeImgObject.exifData);
+            if (exifBytes) {
+                try {
+                    currentImageURI = piexif.insert(exifBytes, currentImageURI);
+                } catch (exifError) {
+                    console.warn("Could not insert EXIF data for Drive upload:", exifError);
+                    toast({ title: 'Aviso EXIF', description: 'Não foi possível anexar dados EXIF à imagem do Drive.', variant: 'default' });
+                }
+            }
+        
           const savedFile = await uploadFileToDrive(folderId, `${activeImgObject.baseFileName}_retrograin`, currentImageURI);
           if (savedFile && savedFile.id) {
             toast({ title: 'Salvo no Drive!', description: `${activeImgObject.baseFileName}_retrograin.jpg salvo na pasta RetroGrain.` });
@@ -181,7 +200,7 @@ export function ActionButtonsSection() {
   };
 
   const handleDisconnectDrive = () => {
-    revokeAccessToken(); // This will clear gapi.client token
+    revokeAccessToken();
     setIsDriveAuthorized(false);
     toast({ title: 'Google Drive Desconectado' });
   };
@@ -221,13 +240,15 @@ export function ActionButtonsSection() {
     if (allImages.length === 1 && activeImageId) {
       const activeImgObject = allImages.find(img => img.id === activeImageId);
       let dataURL = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
-      if (dataURL && activeImgObject && activeImgObject.exifData) {
-        try {
-          const exifBytes = piexif.dump(activeImgObject.exifData);
-          dataURL = piexif.insert(exifBytes, dataURL);
-        } catch (exifError: any) {
-            console.warn("Could not insert EXIF for single download:", exifError);
-            toast({ title: 'Aviso EXIF', description: `Não foi possível reanexar dados EXIF: ${exifError.message || 'Erro desconhecido'}.`, variant: 'default' });
+      if (dataURL && activeImgObject) {
+        const exifBytes = createExifWithComment(activeImgObject.exifData);
+        if (exifBytes) {
+            try {
+              dataURL = piexif.insert(exifBytes, dataURL);
+            } catch (exifError: any) {
+                console.warn("Could not insert EXIF for single download:", exifError);
+                toast({ title: 'Aviso EXIF', description: `Não foi possível reanexar dados EXIF: ${exifError.message || 'Erro desconhecido'}.`, variant: 'default' });
+            }
         }
       }
 
@@ -248,13 +269,15 @@ export function ActionButtonsSection() {
 
       for (const imgObject of allImages) {
         let dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY);
-        if (dataURL && imgObject.exifData) {
-          try {
-            const exifBytes = piexif.dump(imgObject.exifData);
-            dataURL = piexif.insert(exifBytes, dataURL);
-          } catch (exifError: any) {
-            console.warn(`Could not insert EXIF for ${imgObject.baseFileName} in ZIP:`, exifError);
-             toast({ title: `Aviso EXIF (${imgObject.baseFileName})`, description: `Não foi possível reanexar dados EXIF: ${exifError.message || 'Erro desconhecido'}.`, variant: 'default', duration: 2000 });
+        if (dataURL) {
+          const exifBytes = createExifWithComment(imgObject.exifData);
+          if (exifBytes) {
+            try {
+              dataURL = piexif.insert(exifBytes, dataURL);
+            } catch (exifError: any) {
+              console.warn(`Could not insert EXIF for ${imgObject.baseFileName} in ZIP:`, exifError);
+               toast({ title: `Aviso EXIF (${imgObject.baseFileName})`, description: `Não foi possível reanexar dados EXIF: ${exifError.message || 'Erro desconhecido'}.`, variant: 'default', duration: 2000 });
+            }
           }
         }
 
@@ -340,4 +363,3 @@ export function ActionButtonsSection() {
     </div>
   );
 }
-

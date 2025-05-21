@@ -8,9 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { initialImageSettings } from '@/contexts/ImageEditorContext';
-import piexif from 'piexifjs'; // Correct import
+import piexif from 'piexifjs';
 
-const JPEG_QUALITY = 0.92; 
+const JPEG_QUALITY = 0.92;
 
 export function FileUploadSection() {
   const { addImageObject } = useImageEditor();
@@ -39,17 +39,33 @@ export function FileUploadSection() {
         return;
       }
       
-      let exifData: string | null = null;
+      let preservedExifData: object | null = null;
       try {
-        // piexifjs.load expects a base64 string *without* the "data:image/jpeg;base64," prefix.
-        // However, it often handles the full Data URL gracefully. If not, we might need to strip the prefix.
-        // For safety, let's assume it handles the full Data URL or we might need to adjust based on piexifjs behavior.
-        if (file.type === "image/jpeg" || file.type === "image/jpg") { // Only try to load EXIF from JPEGs
-            exifData = piexif.load(dataURL);
+        if (file.type === "image/jpeg" || file.type === "image/jpg") {
+            const fullExifObj = piexif.load(dataURL);
+            preservedExifData = { "0th": {}, "Exif": {} }; // Initialize with base IFDs
+
+            if (fullExifObj["0th"] && fullExifObj["0th"][piexif.ImageIFD.DateTime]) {
+              (preservedExifData as any)["0th"][piexif.ImageIFD.DateTime] = fullExifObj["0th"][piexif.ImageIFD.DateTime];
+            }
+            if (fullExifObj["Exif"]) {
+              if (fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal]) {
+                (preservedExifData as any)["Exif"][piexif.ExifIFD.DateTimeOriginal] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal];
+              }
+              if (fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized]) {
+                (preservedExifData as any)["Exif"][piexif.ExifIFD.DateTimeDigitized] = fullExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized];
+              }
+            }
+            // If no relevant date tags were found, preservedExifData will have empty "0th" or "Exif" IFDs.
+            // We can clean them up if they are empty before storing, or let piexif.dump handle it.
+            if (Object.keys((preservedExifData as any)["0th"]).length === 0) delete (preservedExifData as any)["0th"];
+            if (Object.keys((preservedExifData as any)["Exif"]).length === 0) delete (preservedExifData as any)["Exif"];
+            if (Object.keys(preservedExifData).length === 0) preservedExifData = null;
+
         }
       } catch (exifError) {
-        console.warn(`Could not load EXIF data for ${file.name}:`, exifError);
-        exifData = null; 
+        console.warn(`Could not load or process EXIF data for ${file.name}:`, exifError);
+        preservedExifData = null; 
       }
 
       const img = new Image();
@@ -57,9 +73,9 @@ export function FileUploadSection() {
         const baseFileName = file.name.replace(/\.[^/.]+$/, "");
         
         if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
-          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData });
+          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData: preservedExifData });
         } else {
-          // Convert non-JPEG to JPEG and try to carry over EXIF (though conversion might strip it)
+          // Convert non-JPEG to JPEG
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = img.naturalWidth;
           tempCanvas.height = img.naturalHeight;
@@ -69,21 +85,15 @@ export function FileUploadSection() {
             tempCtx.drawImage(img, 0, 0);
             let jpegDataUrl = tempCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
             
-            // Try to re-insert original EXIF if it was a non-JPEG but had EXIF (unlikely for most formats like PNG)
-            if (exifData) {
-                try {
-                    jpegDataUrl = piexif.insert(exifData, jpegDataUrl);
-                } catch (insertError) {
-                    console.warn(`Could not insert EXIF into converted JPEG for ${file.name}:`, insertError);
-                }
-            }
+            // Non-JPEGs typically don't have EXIF, so preservedExifData would be null here.
+            // If by some chance a non-JPEG had EXIF (very rare), piexif wouldn't be able to insert it into a new JPEG this way.
             
             const jpegImage = new Image();
             jpegImage.onload = () => {
-              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings }, exifData }); // Pass original exifData
+              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings }, exifData: null }); // EXIF from non-JPEG is not preserved
               toast({
                 title: 'Image Converted',
-                description: `${file.name} was converted to JPEG (quality: ${JPEG_QUALITY * 100}%). EXIF data preservation attempted.`,
+                description: `${file.name} was converted to JPEG (quality: ${JPEG_QUALITY * 100}%). Original EXIF (if any) not transferred from non-JPEG formats.`,
               });
             };
             jpegImage.onerror = () => {
@@ -100,8 +110,8 @@ export function FileUploadSection() {
               description: `Could not prepare ${file.name} for JPEG conversion. Using original.`,
               variant: 'destructive',
             });
-            // If conversion fails, add original image with its EXIF data
-            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData });
+            // If conversion fails, add original image (EXIF might be lost by browser for non-JPEGs anyway)
+            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings }, exifData: null });
           }
         }
       };
@@ -121,7 +131,7 @@ export function FileUploadSection() {
         variant: 'destructive',
       });
     }
-    reader.readAsDataURL(file); // Reads the file as a Data URL
+    reader.readAsDataURL(file);
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,7 +164,7 @@ export function FileUploadSection() {
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept="image/jpeg,image/png,image/webp,image/heic,image/heif" // Accept common image types
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
         multiple
         className="hidden"
       />
