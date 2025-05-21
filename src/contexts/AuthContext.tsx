@@ -58,8 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       let isPwaMode = false;
       if (typeof window !== 'undefined') {
-        isPwaMode = window.matchMedia('(display-mode: standalone)').matches ||
-                      window.matchMedia('(display-mode: minimal-ui)').matches;
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        const isMinimalUi = window.matchMedia('(display-mode: minimal-ui)').matches;
+        // navigator.standalone is a non-standard property, primarily for older iOS Safari PWAs, but worth checking.
+        const navigatorStandalone = (window.navigator as any)?.standalone === true;
+        isPwaMode = isStandalone || isMinimalUi || navigatorStandalone;
       }
 
       if (isPwaMode) {
