@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const APP_VERSION = "alpha 0.1u"; // Updated version
+const APP_VERSION = "alpha 0.1v"; // Updated version
 
 export function ControlPanel() {
 
@@ -53,3 +53,4 @@ export function ControlPanel() {
 }
 
     
+
