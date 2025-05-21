@@ -26,6 +26,7 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
+    // Define the version string directly here or import from a constants file
     setAppVersion(CURRENT_PROJECT_VERSION);
   }, []);
 
@@ -60,4 +61,5 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
+
 

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
@@ -19,13 +19,15 @@ export function ImageCanvas() {
     settings,
     canvasRef,
     isPreviewing,
-    noiseImageDataRef,
+    noiseImageDataRef, // Changed from noiseSourceCanvasRef to noiseImageDataRef
     applyCssFilters,
   } = context;
 
   useEffect(() => {
+    // This effect creates the noise ImageData once and stores it in the context's ref.
     if (typeof window !== 'undefined' && !noiseImageDataRef.current) {
       try {
+        // Attempt to create ImageData directly (preferred)
         const imageData = new ImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
@@ -38,6 +40,7 @@ export function ImageCanvas() {
         noiseImageDataRef.current = imageData;
         console.log(`SUCCESS: Noise ImageData (${NOISE_CANVAS_SIZE}x${NOISE_CANVAS_SIZE}) created and stored in context ref.`);
       } catch (e) {
+        // Fallback for environments where ImageData constructor might fail (e.g., older browsers, some test runners)
         console.warn("ImageData constructor failed, trying with temporary canvas for noise.", e);
         const tempCanvasForNoise = document.createElement('canvas');
         tempCanvasForNoise.width = NOISE_CANVAS_SIZE;
@@ -50,6 +53,9 @@ export function ImageCanvas() {
             const rand = Math.floor(Math.random() * 256);
             data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255;
           }
+          // Put the generated data onto the temp canvas, then get it back as ImageData
+          // This step might seem redundant but ensures the ImageData object is properly formed
+          // if the direct constructor failed or behaved unexpectedly.
           noiseCtx.putImageData(imageData,0,0);
           noiseImageDataRef.current = noiseCtx.getImageData(0,0,NOISE_CANVAS_SIZE,NOISE_CANVAS_SIZE);
           console.log(`SUCCESS (fallback): Noise ImageData (${NOISE_CANVAS_SIZE}x${NOISE_CANVAS_SIZE}) created via temp canvas and stored.`);
@@ -58,7 +64,7 @@ export function ImageCanvas() {
         }
       }
     }
-  }, [noiseImageDataRef]);
+  }, [noiseImageDataRef]); // Depends only on the ref object itself
 
 
   const drawImageImmediately = useCallback(() => {
@@ -77,34 +83,40 @@ export function ImageCanvas() {
       vignetteIntensity, grainIntensity
     } = settings;
 
-    let contentWidth = originalImage.naturalWidth / cropZoom;
-    let contentHeight = originalImage.naturalHeight / cropZoom;
-    
-    let sx = (cropOffsetX * 0.5 + 0.5) * (originalImage.naturalWidth - contentWidth);
-    let sy = (cropOffsetY * 0.5 + 0.5) * (originalImage.naturalHeight - contentHeight);
+    // Calculate the source region from the original image based on crop settings
+    let sWidth = originalImage.naturalWidth / cropZoom;
+    let sHeight = originalImage.naturalHeight / cropZoom;
+    const maxPanX = Math.max(0, originalImage.naturalWidth - sWidth); // Ensure maxPan is not negative
+    const maxPanY = Math.max(0, originalImage.naturalHeight - sHeight);
+    let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
+    let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
 
-    contentWidth = Math.max(1, Math.round(contentWidth));
-    contentHeight = Math.max(1, Math.round(contentHeight));
-    sx = Math.max(0, Math.min(Math.round(sx), originalImage.naturalWidth - contentWidth));
-    sy = Math.max(0, Math.min(Math.round(sy), originalImage.naturalHeight - contentHeight));
+    // Ensure source dimensions are valid
+    sWidth = Math.max(1, Math.round(sWidth));
+    sHeight = Math.max(1, Math.round(sHeight));
+    sx = Math.max(0, Math.min(Math.round(sx), originalImage.naturalWidth - sWidth));
+    sy = Math.max(0, Math.min(Math.round(sy), originalImage.naturalHeight - sHeight));
 
-    if (![sx, sy, contentWidth, contentHeight].every(val => Number.isFinite(val) && val >= 0) || contentWidth === 0 || contentHeight === 0) {
-      console.error("Invalid source dimensions for drawImage:", { sx, sy, contentWidth, contentHeight });
+    if (![sx, sy, sWidth, sHeight].every(val => Number.isFinite(val) && val >= 0) || sWidth === 0 || sHeight === 0) {
+      console.error("Invalid source dimensions for drawImage:", { sx, sy, sWidth, sHeight });
       return;
     }
-
+    
+    // Determine physical dimensions of the canvas buffer based on the cropped content
+    // and 90/270 degree rotations. Flips (scaleX/Y) don't change physical buffer dimensions.
     let canvasPhysicalWidth, canvasPhysicalHeight;
     if (rotation === 90 || rotation === 270) {
-      canvasPhysicalWidth = contentHeight;
-      canvasPhysicalHeight = contentWidth;
+      canvasPhysicalWidth = sHeight;
+      canvasPhysicalHeight = sWidth;
     } else {
-      canvasPhysicalWidth = contentWidth;
-      canvasPhysicalHeight = contentHeight;
+      canvasPhysicalWidth = sWidth;
+      canvasPhysicalHeight = sHeight;
     }
     
+    // Limit the maximum size of the canvas buffer for performance
     const MAX_WIDTH_STANDARD_RATIO = 800;
     const MAX_WIDTH_WIDE_RATIO = 960;
-    const MAX_PHYSICAL_HEIGHT_CAP = 1000;
+    const MAX_PHYSICAL_HEIGHT_CAP = 1000; 
     const currentAspectRatio = canvasPhysicalWidth > 0 ? canvasPhysicalWidth / canvasPhysicalHeight : 1;
     let targetMaxWidthForCanvas = (currentAspectRatio > 1.6) ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO;
 
@@ -117,29 +129,33 @@ export function ImageCanvas() {
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
     
+    // Set canvas buffer size (these are the "high-res" preview dimensions)
     canvas.width = Math.round(canvasPhysicalWidth);
     canvas.height = Math.round(canvasPhysicalHeight);
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
+    ctx.save(); // Save the clean state
     
-    let effectiveCanvasWidth = canvas.width;
-    let effectiveCanvasHeight = canvas.height;
-
+    // Apply preview scaling internally if isPreviewing
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
-      effectiveCanvasWidth /= PREVIEW_SCALE_FACTOR;
-      effectiveCanvasHeight /= PREVIEW_SCALE_FACTOR;
     }
-    
-    const effectiveCenterX = Math.round(effectiveCanvasWidth / 2);
-    const effectiveCenterY = Math.round(effectiveCanvasHeight / 2);
 
-    ctx.translate(effectiveCenterX, effectiveCenterY);
+    // Calculate effective canvas dimensions for drawing operations
+    // These are the dimensions of the space we're drawing into, after internal scaling
+    const effectiveCanvasWidth = Math.round(canvas.width / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1));
+    const effectiveCanvasHeight = Math.round(canvas.height / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1));
     
+    // Translate to the center of the (potentially scaled) drawing space
+    ctx.translate(Math.round(effectiveCanvasWidth / 2), Math.round(effectiveCanvasHeight / 2));
+    
+    // Apply 90-degree rotations
     if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
+    // Apply flips
     if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
     
+    // Determine the destination drawing dimensions for the image content itself
+    // This should match the canvas buffer's orientation if rotated by 90/270
     const destDrawWidthForImage = Math.round(
       (rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth
     );
@@ -147,18 +163,24 @@ export function ImageCanvas() {
       (rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight
     );
     
+    // --- Apply CSS Filters ---
     ctx.filter = 'none'; 
-    applyCssFilters(ctx, settings); 
+    if (applyCssFilters) applyCssFilters(ctx, settings); 
     
+    // Draw the source image (sX, sY, sWidth, sHeight) into the transformed context
+    // The destination is centered at (-w/2, -h/2) and fills destDrawWidth/HeightForImage
     ctx.drawImage(
       originalImage,
-      sx, sy, contentWidth, contentHeight,
+      sx, sy, sWidth, sHeight,
       Math.round(-destDrawWidthForImage / 2), Math.round(-destDrawHeightForImage / 2), 
       destDrawWidthForImage, destDrawHeightForImage
     );
 
+    // Reset CSS filter before applying manual canvas effects
     ctx.filter = 'none'; 
 
+    // Define the rectangle for applying subsequent overlay effects.
+    // This rectangle should cover the area where the image was just drawn.
     const effectRectArgs: [number, number, number, number] = [ 
       Math.round(-destDrawWidthForImage / 2), 
       Math.round(-destDrawHeightForImage / 2), 
@@ -166,6 +188,7 @@ export function ImageCanvas() {
       destDrawHeightForImage 
     ];
     
+    // Helper for blend effects
     const applyBlendEffect = (
         ctxForBlend: CanvasRenderingContext2D,
         rectArgs: [number, number, number, number],
@@ -183,6 +206,7 @@ export function ImageCanvas() {
       }
     };
     
+    // Apply Shadows & Highlights (direct canvas operations)
     if (Math.abs(shadows) > 0.001) {
       const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
       if (shadows > 0) applyBlendEffect(ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen'); 
@@ -195,6 +219,7 @@ export function ImageCanvas() {
       else applyBlendEffect(ctx, effectRectArgs, 'rgb(200,200,200)', highlightAlpha, 'screen'); 
     }
     
+    // Apply Color Temperature (direct canvas operation)
     if (Math.abs(colorTemperature) > 0.001) {
       const temp = colorTemperature / 100; 
       const alpha = Math.abs(temp) * 0.1; 
@@ -202,6 +227,7 @@ export function ImageCanvas() {
       applyBlendEffect(ctx, effectRectArgs, color, 1, 'overlay'); 
     }
 
+    // Apply Tint (direct canvas operations)
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
       if (intensity > 0.001 && baseColorHex && baseColorHex !== '') {
         const rgbColor = hexToRgb(baseColorHex);
@@ -215,8 +241,9 @@ export function ImageCanvas() {
     applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge'); 
     applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
     
+    // Apply Vignette (direct canvas operation)
     if (vignetteIntensity > 0.001) {
-      const centerX = 0; 
+      const centerX = 0; // Center of the transformed context
       const centerY = 0;
       const radiusX = destDrawWidthForImage / 2;
       const radiusY = destDrawHeightForImage / 2;
@@ -229,24 +256,28 @@ export function ImageCanvas() {
       ctx.fillRect(...effectRectArgs);
     }
 
-    const currentNoiseImageData = noiseImageDataRef.current;
+    // Apply Grain (direct canvas operation)
+    const currentNoiseImageData = noiseImageDataRef.current; // Get the ImageData from context
     if (grainIntensity > 0.001 && currentNoiseImageData) {
+        // Create a temporary canvas to put the noise ImageData
         const tempNoiseCanvas = document.createElement('canvas');
         tempNoiseCanvas.width = currentNoiseImageData.width > 0 ? currentNoiseImageData.width : NOISE_CANVAS_SIZE;
         tempNoiseCanvas.height = currentNoiseImageData.height > 0 ? currentNoiseImageData.height : NOISE_CANVAS_SIZE;
         
         const tempNoiseCtx = tempNoiseCanvas.getContext('2d');
-
         if (tempNoiseCtx) {
             tempNoiseCtx.putImageData(currentNoiseImageData, 0, 0);
             const liveNoisePattern = ctx.createPattern(tempNoiseCanvas, 'repeat'); 
             if (liveNoisePattern) {
-                ctx.save();
+                // ctx.save() and ctx.restore() for grain are not strictly needed here
+                // if we reset globalAlpha and globalCompositeOperation after,
+                // but it's good practice if more complex state changes were involved.
                 ctx.fillStyle = liveNoisePattern;
-                ctx.globalAlpha = grainIntensity * (isPreviewing ? 0.2 : 1.0); // Adjusted opacity based on isPreviewing
+                ctx.globalAlpha = grainIntensity * (isPreviewing ? 0.1 : 0.7); // Adjusted preview intensity
                 ctx.globalCompositeOperation = 'overlay';
                 ctx.fillRect(...effectRectArgs);
-                ctx.restore(); 
+                ctx.globalAlpha = 1.0; // Reset globalAlpha
+                ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
             } else {
                 console.warn("Could not create grain pattern for live preview from tempNoiseCanvas:", tempNoiseCanvas);
             }
@@ -257,7 +288,7 @@ export function ImageCanvas() {
        console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
     }
 
-    ctx.restore();
+    ctx.restore(); // Restore to the clean state saved at the beginning
   }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFilters]);
 
   const debouncedDrawImage = useMemo(
@@ -267,7 +298,7 @@ export function ImageCanvas() {
       
       let timeoutId: NodeJS.Timeout | null = null;
       
-      const debouncedFunction = () => { // Removed ...args
+      const debouncedFunction = () => {
         if (timeoutId !== null) {
           clearTimeout(timeoutId);
         }
@@ -298,6 +329,7 @@ export function ImageCanvas() {
         }
       }
     }
+  // Key dependencies for re-rendering the canvas
   }, [originalImage, settings, isPreviewing, canvasRef, drawImageImmediately, debouncedDrawImage]);
 
 
@@ -313,6 +345,7 @@ export function ImageCanvas() {
     <canvas
       ref={canvasRef}
       className="max-w-full max-h-full object-contain rounded-md shadow-lg"
+      // imageRendering 'auto' for final, 'pixelated' (or 'crisp-edges') for fast preview
       style={{ imageRendering: isPreviewing ? 'pixelated' : 'auto' }}
     />
   );
@@ -323,3 +356,4 @@ export function ImageCanvas() {
     
 
     
+
