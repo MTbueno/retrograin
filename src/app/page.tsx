@@ -21,7 +21,7 @@ export default function RetroGrainPage() {
           <div className="flex flex-1 h-full"> {/* Wrapper for thumbnail sidebar and canvas area */}
             {isThumbnailSidebarVisible && <ImageThumbnailSidebar />}
             
-            <div className="relative flex-1 flex flex-col items-center justify-center p-4 bg-background overflow-auto"> {/* Canvas area */}
+            <div className="relative flex-1 flex flex-col items-center justify-center p-4 bg-background"> {/* Canvas area - removed overflow-auto */}
               <div className="absolute top-4 left-4 z-10">
                 <Button 
                   variant="ghost" 
