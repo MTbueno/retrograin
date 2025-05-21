@@ -14,7 +14,7 @@ export function AdjustmentsSection() {
 
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' | 
-          'highlights' | 'shadows' | 'blacks' | 
+          'highlights' | 'shadows' | 'whites' | 'blacks' | 
           'hueRotate' |
           'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 
@@ -34,7 +34,7 @@ export function AdjustmentsSection() {
       case 'saturation':
         dispatchSettings({ type: 'SET_SATURATION', payload: value });
         break;
-      case 'vibrance': // Handle vibrance
+      case 'vibrance':
         dispatchSettings({ type: 'SET_VIBRANCE', payload: value });
         break;
       case 'exposure':
@@ -45,6 +45,9 @@ export function AdjustmentsSection() {
         break;
       case 'shadows':
         dispatchSettings({ type: 'SET_SHADOWS', payload: value });
+        break;
+      case 'whites': // Added
+        dispatchSettings({ type: 'SET_WHITES', payload: value });
         break;
       case 'blacks':
         dispatchSettings({ type: 'SET_BLACKS', payload: value });
@@ -103,6 +106,7 @@ export function AdjustmentsSection() {
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
     { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
+    { id: 'whites', label: 'Whites', icon: Sparkles, value: settings.whites, min: -1, max: 1, step: 0.01 }, // Added
     { id: 'blacks', label: 'Blacks', icon: Baseline, value: settings.blacks, min: -1, max: 1, step: 0.01 },
   ];
 
@@ -128,7 +132,7 @@ export function AdjustmentsSection() {
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
-           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' || control.id === 'vibrance' ? `${Math.round(control.value * 100)}` :
+           ['highlights', 'shadows', 'whites', 'blacks', 'vibrance'].includes(control.id) ? `${Math.round(control.value * 100)}` :
            isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || control.id === 'saturation' ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
@@ -243,5 +247,3 @@ export function AdjustmentsSection() {
     </div>
   );
 }
-
-    
