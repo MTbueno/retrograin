@@ -14,15 +14,15 @@ const applyCssFilters = (
   let filterString = '';
 
   // Ensure all setting values are numbers and have defaults
-  const baseBrightness = typeof settings.brightness === 'number' ? settings.brightness : 1;
-  const baseContrast = typeof settings.contrast === 'number' ? settings.contrast : 1;
+  const baseBrightnessSetting = typeof settings.brightness === 'number' ? settings.brightness : 1;
+  const baseContrastSetting = typeof settings.contrast === 'number' ? settings.contrast : 1;
   const saturationVal = typeof settings.saturation === 'number' ? settings.saturation : 1;
   const exposureVal = typeof settings.exposure === 'number' ? settings.exposure : 0;
   const blacksVal = typeof settings.blacks === 'number' ? settings.blacks : 0;
   const hueRotateVal = typeof settings.hueRotate === 'number' ? settings.hueRotate : 0;
 
-  let finalBrightness = baseBrightness;
-  let finalContrast = baseContrast;
+  let finalBrightness = baseBrightnessSetting;
+  let finalContrast = baseContrastSetting;
 
   // Adjust brightness and contrast based on 'blacks'
   if (blacksVal !== 0) {
@@ -31,14 +31,15 @@ const applyCssFilters = (
   }
 
   // Adjust brightness based on 'exposure'
-  if (exposureVal !== 0) {
-    const exposureEffect = 1 + exposureVal * 0.5; 
-    finalBrightness *= exposureEffect;
-  }
+  // Exposure is additive to brightness percentage, so 1 + exposure means 0 exposure = 100% brightness
+  // If exposure is +0.1, brightness becomes 1.1x
+  // If exposure is -0.1, brightness becomes 0.9x
+  finalBrightness *= (1 + exposureVal);
+
 
   // Clamp final brightness and contrast to avoid extreme values
-  finalBrightness = Math.max(0.1, Math.min(3, finalBrightness)); 
-  finalContrast = Math.max(0.1, Math.min(3, finalContrast));   
+  finalBrightness = Math.max(0, Math.min(3, finalBrightness)); 
+  finalContrast = Math.max(0, Math.min(3, finalContrast));   
 
 
   if (finalBrightness !== 1) filterString += `brightness(${finalBrightness * 100}%) `;
@@ -55,7 +56,6 @@ const applyCssFilters = (
 
   const trimmedFilterString = filterString.trim();
   
-  // Safari specific debug log
   if (typeof navigator !== 'undefined') {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     if (isSafari) {
@@ -63,8 +63,8 @@ const applyCssFilters = (
     }
   }
   
-  ctx.filter = 'none'; // Explicitly clear previous filter
-  if (trimmedFilterString) { // Only apply if there are filters
+  ctx.filter = 'none'; 
+  if (trimmedFilterString) { 
     ctx.filter = trimmedFilterString;
   }
 };
@@ -104,7 +104,6 @@ export function ImageCanvas() {
 
     const { rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY } = settings;
 
-    // Source rectangle from original image, adjusted by cropZoom and cropOffsets
     let sWidth = originalImage.naturalWidth / cropZoom;
     let sHeight = originalImage.naturalHeight / cropZoom;
 
@@ -124,7 +123,6 @@ export function ImageCanvas() {
       return;
     }
     
-    // Calculate canvas buffer dimensions based on the source content and 90-degree rotations/flips
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
       canvasBufferWidth = sHeight * Math.abs(scaleY);
@@ -135,8 +133,14 @@ export function ImageCanvas() {
     }
 
     const currentScaleFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1;
-    canvas.width = canvasBufferWidth * currentScaleFactor;
-    canvas.height = canvasBufferHeight * currentScaleFactor;
+    canvas.width = Math.round(canvasBufferWidth * currentScaleFactor);
+    canvas.height = Math.round(canvasBufferHeight * currentScaleFactor);
+    
+    const destX = -canvas.width / 2 / Math.abs(scaleX);
+    const destY = -canvas.height / 2 / Math.abs(scaleY);
+    const finalDrawWidth = canvas.width / Math.abs(scaleX) ;
+    const finalDrawHeight = canvas.height / Math.abs(scaleY) ;
+
 
     ctx.save();
     
@@ -145,23 +149,24 @@ export function ImageCanvas() {
     ctx.scale(scaleX, scaleY);
 
     applyCssFilters(ctx, settings);
+    ctx.filter = ctx.filter; // Speculative "kick" for Safari
 
     ctx.drawImage(
       originalImage,
-      sx, sy, sWidth, sHeight,             // Source rectangle from original image
-      - (sWidth * currentScaleFactor) / 2, // Destination x, y (centered in transformed context)
-      - (sHeight * currentScaleFactor) / 2,
-      sWidth * currentScaleFactor,         // Destination width, height
-      sHeight * currentScaleFactor
+      sx, sy, sWidth, sHeight,            
+      destX, 
+      destY,
+      finalDrawWidth,        
+      finalDrawHeight
     );
 
     ctx.filter = 'none'; 
     
     const rectArgs: [number, number, number, number] = [
-      - (sWidth * currentScaleFactor) / 2, 
-      - (sHeight * currentScaleFactor) / 2, 
-      sWidth * currentScaleFactor, 
-      sHeight * currentScaleFactor
+      destX, 
+      destY, 
+      finalDrawWidth, 
+      finalDrawHeight
     ];
 
 
@@ -233,8 +238,8 @@ export function ImageCanvas() {
       const centerX = 0; 
       const centerY = 0;
       
-      const vignetteCanvasWidth = sWidth * currentScaleFactor;
-      const vignetteCanvasHeight = sHeight * currentScaleFactor;
+      const vignetteCanvasWidth = finalDrawWidth;
+      const vignetteCanvasHeight = finalDrawHeight;
 
       const radiusX = vignetteCanvasWidth / 2;
       const radiusY = vignetteCanvasHeight / 2;
@@ -248,12 +253,17 @@ export function ImageCanvas() {
     }
 
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
-        ctx.save();
+        ctx.save(); // Save before applying grain effect with its own transforms
+        // The grain pattern should be applied in the untransformed space of the current drawing area
+        // so we need to translate back from the center for the fillRect
+        ctx.translate(-finalDrawWidth/2, -finalDrawHeight/2);
+
         ctx.fillStyle = noisePatternRef.current;
         ctx.globalAlpha = settings.grainIntensity * 0.5;
         ctx.globalCompositeOperation = 'overlay';
-        ctx.fillRect(...rectArgs);
-        ctx.restore();
+        // Fill the entire visible area of the image, not the whole canvas if image is smaller
+        ctx.fillRect(0, 0, finalDrawWidth, finalDrawHeight); 
+        ctx.restore(); // Restore to state before grain
     }
 
     ctx.restore();
@@ -329,4 +339,3 @@ export function ImageCanvas() {
     />
   );
 }
-
