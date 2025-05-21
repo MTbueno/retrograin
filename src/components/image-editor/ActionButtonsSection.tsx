@@ -38,22 +38,20 @@ export function ActionButtonsSection() {
 
   const [isGapiLoaded, setIsGapiLoaded] = useState(false);
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
-  const [isSavingToDrive, setIsSavingToDrive] = useState(false); // True when connecting or saving
+  const [isConnectingOrSavingToDrive, setIsConnectingOrSavingToDrive] = useState(false);
 
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
-    setIsSavingToDrive(false); // Always reset saving state when response is received
+    setIsConnectingOrSavingToDrive(false); // Reset connecting/saving state
 
     if (tokenResponse && tokenResponse.access_token) {
       gapi.client.setToken({ access_token: tokenResponse.access_token });
-      // Verify token was set and Drive is now authenticated
       if (isDriveAuthenticated()) {
         setIsDriveAuthorized(true);
         toast({ title: 'Google Drive Conectado!', description: 'Agora você pode salvar imagens no Drive.' });
       } else {
-        // This case would be unusual: token received, set, but still not "authenticated"
         setIsDriveAuthorized(false);
-        console.error("Token do Drive recebido e definido, mas isDriveAuthenticated() ainda é falso. Problema de estado do token GAPI ou API do Drive não inicializada (driveApiLoaded).");
-        toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização. A API do Drive pode não estar pronta.', variant: 'destructive' });
+        console.error("Token do Drive recebido e definido, mas isDriveAuthenticated() ainda é falso.");
+        toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização.', variant: 'destructive' });
       }
     } else {
       setIsDriveAuthorized(false);
@@ -68,16 +66,15 @@ export function ActionButtonsSection() {
   useEffect(() => {
     loadGapi(() => {
       setIsGapiLoaded(true);
-      // Check for google.accounts.oauth2 which comes from the GIS library
+      // This inner function will be called once gapi client is loaded and initialized
       if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         initTokenClient(handleTokenResponse);
-        // Check if already authenticated from a previous session / existing token
         if (isDriveAuthenticated()) {
           setIsDriveAuthorized(true);
         }
       } else {
-        // If GIS library isn't ready, try again after a delay.
-        console.warn("GIS não está imediatamente disponível após o carregamento do GAPI. Tentando inicializar o token client novamente em breve.");
+        // GIS might not be ready immediately after gapi.client.init
+        // Attempt to initialize token client again after a short delay
         setTimeout(() => {
           if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
             initTokenClient(handleTokenResponse);
@@ -86,23 +83,11 @@ export function ActionButtonsSection() {
             }
           } else {
             console.error("GIS ainda não disponível após o atraso. A autenticação do Drive pode falhar.");
-            // Consider alerting user or disabling Drive features more permanently here
           }
-        }, 1500); // Slightly increased delay
+        }, 1500);
       }
     });
   }, [handleTokenResponse]);
-
-  // This effect tries to set the initial authorized state if a token already exists
-  // when GAPI loads, or if the GIS library loads later than GAPI.
-  useEffect(() => {
-    if (isGapiLoaded && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        if (isDriveAuthenticated()) {
-          setIsDriveAuthorized(true);
-        }
-    }
-  }, [isGapiLoaded]);
-
 
   const handleDownload = async () => {
     if (allImages.length === 0) {
@@ -191,10 +176,10 @@ export function ActionButtonsSection() {
 
     if (!isDriveAuthenticated()) {
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
-      setIsSavingToDrive(true); // Indicate an action is pending user authorization
-      requestAccessToken(); // This will trigger handleTokenResponse
-      // isSavingToDrive will be reset in handleTokenResponse
-      return;
+      setIsConnectingOrSavingToDrive(true); // Indicate an action is pending user authorization
+      requestAccessToken(); // This should trigger the OAuth consent pop-up
+      // isConnectingOrSavingToDrive will be reset in handleTokenResponse or if saving starts
+      return; // Wait for token response
     }
 
     // If we reach here, user is authenticated with Drive and GAPI is loaded.
@@ -203,7 +188,7 @@ export function ActionButtonsSection() {
       return;
     }
 
-    setIsSavingToDrive(true);
+    setIsConnectingOrSavingToDrive(true);
     try {
       toast({ title: 'Salvando no Drive...', description: 'Por favor, aguarde.' });
       const folderId = await ensureRetroGrainFolder();
@@ -213,20 +198,16 @@ export function ActionButtonsSection() {
           const savedFile = await uploadFileToDrive(folderId, `${baseFileName}_retrograin`, currentImageURI);
           if (savedFile && savedFile.id) {
             toast({ title: 'Salvo no Drive!', description: `${baseFileName}_retrograin.jpg salvo na pasta RetroGrain.` });
-          } else {
-            // Error toast for uploadFileToDrive is handled within that function
           }
         } else {
           toast({ title: 'Erro', description: 'Não foi possível gerar os dados da imagem para salvar.', variant: 'destructive' });
         }
-      } else {
-        // Error toast for folderId is handled in ensureRetroGrainFolder
       }
     } catch (error: any) {
       console.error('Erro ao salvar no drive:', error);
       toast({ title: 'Erro ao Salvar', description: error.message || 'Ocorreu um erro inesperado.', variant: 'destructive' });
     } finally {
-      setIsSavingToDrive(false);
+      setIsConnectingOrSavingToDrive(false);
     }
   };
 
@@ -283,32 +264,31 @@ export function ActionButtonsSection() {
         </Button>
       </div>
 
-      {firebaseUser && ( // Only show Drive buttons if Firebase user exists
+      {firebaseUser && (
         isDriveAuthorized ? (
           <>
             <Button
               onClick={handleSaveToDrive}
-              disabled={isSavingToDrive || !originalImage} // Disabled if saving or no image
+              disabled={isConnectingOrSavingToDrive || !originalImage}
               variant="default"
               className="w-full"
             >
               <Save className="mr-2 h-4 w-4" />
-              {isSavingToDrive ? 'Salvando...' : 'Salvar no Google Drive'}
+              {isConnectingOrSavingToDrive ? 'Salvando...' : 'Salvar no Google Drive'}
             </Button>
             <Button onClick={handleDisconnectDrive} variant="outline" className="w-full">
               Desconectar Drive
             </Button>
           </>
         ) : (
-          // This button now calls handleSaveToDrive, which internally calls requestAccessToken
           <Button
-            onClick={handleSaveToDrive}
-            disabled={!isGapiLoaded || isSavingToDrive } // Disabled if GAPI not loaded or if already trying to connect/save
+            onClick={handleSaveToDrive} // This will now trigger requestAccessToken if not authenticated
+            disabled={!isGapiLoaded || isConnectingOrSavingToDrive}
             variant="outline"
             className="w-full"
           >
             <Save className="mr-2 h-4 w-4" />
-            {isSavingToDrive ? 'Conectando...' : 'Conectar ao Drive'}
+            {isConnectingOrSavingToDrive ? 'Conectando...' : 'Conectar ao Drive'}
           </Button>
         )
       )}
@@ -320,5 +300,3 @@ export function ActionButtonsSection() {
     </div>
   );
 }
-
-    
