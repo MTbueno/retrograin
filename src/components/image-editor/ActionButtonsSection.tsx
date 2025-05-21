@@ -38,16 +38,15 @@ export function ActionButtonsSection() {
   const { user: firebaseUser } = useAuth();
 
   const [isGapiClientInitialized, setIsGapiClientInitialized] = useState(false);
-  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false);
+  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false); // Indicates GAPI and GIS client are ready
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
   const [isConnectingOrSavingToDrive, setIsConnectingOrSavingToDrive] = useState(false);
 
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
-    setIsConnectingOrSavingToDrive(false); // Reset regardless of outcome
+    setIsConnectingOrSavingToDrive(false); 
 
     if (tokenResponse && tokenResponse.access_token) {
       window.gapi.client.setToken({ access_token: tokenResponse.access_token });
-      // Short delay to allow gapi to process the token, then check auth status
       setTimeout(() => {
         if (isDriveAuthenticated()) {
           setIsDriveAuthorized(true);
@@ -57,7 +56,7 @@ export function ActionButtonsSection() {
           console.error("Token do Drive recebido, mas isDriveAuthenticated() ainda é falso.");
           toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização.', variant: 'destructive' });
         }
-      }, 500);
+      }, 500); // Short delay
     } else {
       setIsDriveAuthorized(false);
       const errorDescription = (tokenResponse as any)?.error_description || "Falha ao obter token de acesso do Google Drive.";
@@ -69,28 +68,29 @@ export function ActionButtonsSection() {
 
   useEffect(() => {
     let gapiLoadAttempts = 0;
-    const maxGapiLoadAttempts = 20; // Try for 10 seconds (20 * 500ms)
+    const maxGapiLoadAttempts = 20; 
 
     const attemptGapiLoad = () => {
       if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
         loadGapi((gapiClientSuccess) => {
           setIsGapiClientInitialized(gapiClientSuccess);
           if (gapiClientSuccess) {
+            // GAPI client is ready, now check/wait for GIS
             let gisLoadAttempts = 0;
-            const maxGisLoadAttempts = 20; // Increased attempts for GIS
+            const maxGisLoadAttempts = 20;
             const gisIntervalId = setInterval(() => {
               gisLoadAttempts++;
               if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
                 clearInterval(gisIntervalId);
                 const tokenClientInitialized = initTokenClient(handleTokenResponse);
-                setIsDriveSdkReady(tokenClientInitialized); // This indicates GIS and tokenClient are ready
+                setIsDriveSdkReady(tokenClientInitialized); // GIS and tokenClient are ready
                 if (tokenClientInitialized && isDriveAuthenticated()) {
                   setIsDriveAuthorized(true);
                 }
               } else if (gisLoadAttempts >= maxGisLoadAttempts) {
                 clearInterval(gisIntervalId);
                 console.error("GIS (Google Identity Services) did not load in time.");
-                setIsDriveSdkReady(false);
+                setIsDriveSdkReady(false); // GIS failed to load
               }
             }, 500);
           } else {
@@ -104,7 +104,7 @@ export function ActionButtonsSection() {
         } else {
           console.error("GAPI script (api.js) did not load in time.");
           setIsGapiClientInitialized(false);
-          setIsDriveSdkReady(false);
+          setIsDriveSdkReady(false); // GAPI script failed to load
         }
       }
     };
@@ -117,7 +117,7 @@ export function ActionButtonsSection() {
       toast({ title: 'Não Logado', description: 'Por favor, faça login para usar o Google Drive.', variant: 'default' });
       return;
     }
-    if (!isGapiClientInitialized || !isDriveSdkReady) {
+    if (!isGapiClientInitialized || !isDriveSdkReady) { // Check both GAPI and GIS readiness
       toast({ title: 'SDK do Drive não está pronto', description: 'Aguarde um momento e tente novamente. Verifique o console para erros de API do Google.', variant: 'default' });
       return;
     }
@@ -126,16 +126,16 @@ export function ActionButtonsSection() {
       setIsConnectingOrSavingToDrive(true);
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
       requestAccessToken();
-      // handleTokenResponse will be called by initTokenClient
+      // handleTokenResponse will be called by initTokenClient's callback
     } else {
-      // If already authenticated, and user clicks "Save to Drive" (because button text changes)
+      // If already authenticated, and user clicks "Save to Drive"
       saveToDrive();
     }
   };
 
 
   const saveToDrive = async () => {
-    if (!originalImage) { // originalImage refers to the active image
+    if (!originalImage) { 
       toast({ title: 'Nenhuma Imagem Ativa', description: 'Por favor, carregue e selecione uma imagem para salvar.', variant: 'default' });
       setIsConnectingOrSavingToDrive(false);
       return;
@@ -146,9 +146,8 @@ export function ActionButtonsSection() {
     try {
       const folderId = await ensureRetroGrainFolder();
       if (folderId) {
-        const currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY); // For the active image
+        const currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY); 
         if (currentImageURI) {
-          // Use baseFileName of the active image for saving
           const savedFile = await uploadFileToDrive(folderId, `${baseFileName}_retrograin`, currentImageURI);
           if (savedFile && savedFile.id) {
             toast({ title: 'Salvo no Drive!', description: `${baseFileName}_retrograin.jpg salvo na pasta RetroGrain.` });
@@ -227,10 +226,8 @@ export function ActionButtonsSection() {
       toast({ title: 'Preparando ZIP...', description: 'Gerando imagens, por favor aguarde.' });
 
       for (const imgObject of allImages) {
-        // Ensure we pass the correct image element and its specific settings
         const dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY);
         if (dataURL) {
-          // Convert dataURL to blob for zipping
           const response = await fetch(dataURL);
           const blob = await response.blob();
           zip.file(`${imgObject.baseFileName}_retrograin.jpg`, blob);
@@ -247,7 +244,7 @@ export function ActionButtonsSection() {
           document.body.appendChild(link);
 link.click();
           document.body.removeChild(link);
-          URL.revokeObjectURL(link.href); // Clean up
+          URL.revokeObjectURL(link.href); 
           toast({ title: 'Download do ZIP Iniciado!', description: 'retrograin_edits.zip' });
         })
         .catch(err => {
@@ -280,9 +277,9 @@ link.click();
         isDriveAuthorized ? (
           <>
             <Button
-              onClick={saveToDrive}
+              onClick={saveToDrive} // Changed from handleDriveAction to saveToDrive directly
               disabled={isConnectingOrSavingToDrive || !originalImage}
-              variant="default"
+              variant="default" // Changed from outline to default for primary action
               className="w-full"
             >
               <Save className="mr-2 h-4 w-4" />
@@ -312,6 +309,3 @@ link.click();
     </div>
   );
 }
-
-
-    

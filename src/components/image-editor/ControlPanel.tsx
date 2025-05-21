@@ -21,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 const APP_VERSION = "alpha 0.1g"; 
 
 export function ControlPanel() {
+
   return (
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">

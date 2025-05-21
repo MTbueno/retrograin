@@ -4,21 +4,25 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline } from 'lucide-react';
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Minus, Plus } from 'lucide-react'; // Added Minus, Plus for clarity if needed
 import { Separator } from '@/components/ui/separator';
-import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
+import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider'; // Assuming this is your custom component
+import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils'; // Assuming you move these here or to utils
 
 export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
 
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
-          'highlights' | 'shadows' | 'blacks' | // New
+          'highlights' | 'shadows' | 'blacks' | 
           'hueRotate' | 'vignetteIntensity' | 'grainIntensity' | 
-          'colorTemperature' | 'tintShadowsIntensity' | 
-          'tintHighlightsIntensity',
+          'colorTemperature' | 
+          'tintShadowsIntensity' | 'tintShadowsSaturation' |
+          'tintHighlightsIntensity' | 'tintHighlightsSaturation',
     value: number
   ) => {
+    if (originalImage) setIsPreviewing(true); // Ensure preview mode is on during slider change
+
     switch (type) {
       case 'brightness':
         dispatchSettings({ type: 'SET_BRIGHTNESS', payload: value });
@@ -32,13 +36,13 @@ export function AdjustmentsSection() {
       case 'exposure':
         dispatchSettings({ type: 'SET_EXPOSURE', payload: value });
         break;
-      case 'highlights': // New
+      case 'highlights':
         dispatchSettings({ type: 'SET_HIGHLIGHTS', payload: value });
         break;
-      case 'shadows':    // New
+      case 'shadows':
         dispatchSettings({ type: 'SET_SHADOWS', payload: value });
         break;
-      case 'blacks':     // New
+      case 'blacks':
         dispatchSettings({ type: 'SET_BLACKS', payload: value });
         break;
       case 'hueRotate':
@@ -56,8 +60,14 @@ export function AdjustmentsSection() {
       case 'tintShadowsIntensity':
         dispatchSettings({ type: 'SET_TINT_SHADOWS_INTENSITY', payload: value });
         break;
+      case 'tintShadowsSaturation':
+        dispatchSettings({ type: 'SET_TINT_SHADOWS_SATURATION', payload: value });
+        break;
       case 'tintHighlightsIntensity':
         dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value });
+        break;
+      case 'tintHighlightsSaturation':
+        dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_SATURATION', payload: value });
         break;
     }
   };
@@ -77,18 +87,17 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    setIsPreviewing(false); 
+    if (originalImage) setIsPreviewing(false); // Full render after color change
   };
   
-
   const generalAdjustments = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
-    { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 }, // New
-    { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },          // New
-    { id: 'blacks', label: 'Blacks', icon: Baseline, value: settings.blacks, min: -1, max: 1, step: 0.01 },            // New
+    { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
+    { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
+    { id: 'blacks', label: 'Blacks', icon: Baseline, value: settings.blacks, min: -1, max: 1, step: 0.01 },
   ];
 
   const colorAdjustments = [
@@ -101,7 +110,7 @@ export function AdjustmentsSection() {
     { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 },
   ];
 
-  const renderSlider = (control: any, isIntensitySlider: boolean = false) => (
+  const renderSlider = (control: any, isIntensitySlider: boolean = false, isSaturationSlider: boolean = false) => (
     <div key={control.id} className="space-y-2">
       <div className="flex items-center justify-between">
         <Label htmlFor={control.id} className="flex items-center text-xs text-muted-foreground">
@@ -111,8 +120,8 @@ export function AdjustmentsSection() {
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
-           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}%` : // New display for H/S/B
-           isIntensitySlider || control.id.includes('Intensity') ? `${Math.round(control.value * 100)}%` :
+           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}` : // Removed % for these
+           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
         </span>
@@ -125,14 +134,13 @@ export function AdjustmentsSection() {
         value={[control.value]}
         onValueChange={(val) => {
           handleSliderChange(control.id as any, val[0]);
-          if (originalImage) setIsPreviewing(true);
         }}
         disabled={!originalImage}
         onPointerDown={() => {
           if (originalImage) setIsPreviewing(true);
         }}
         onValueCommit={() => { 
-             if (originalImage) setIsPreviewing(false);
+          if (originalImage) setIsPreviewing(false);
         }}
       />
     </div>
@@ -142,40 +150,62 @@ export function AdjustmentsSection() {
     tonalRange: 'shadows' | 'highlights',
     label: string,
     colorValue: string,
-    intensityValue: number
-  ) => (
+    intensityValue: number,
+    saturationValue: number
+  ) => {
+    const intensityControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Intensity` as any;
+    const saturationControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Saturation` as any;
+    const colorControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Color`;
+
+    let displayColor = colorValue || '#808080';
+    if (colorValue && saturationValue !== 1) {
+        const rgbColor = hexToRgb(colorValue);
+        if (rgbColor) {
+            const desaturated = desaturateRgb(rgbColor, saturationValue);
+            displayColor = rgbToHex(desaturated.r, desaturated.g, desaturated.b);
+        }
+    }
+
+    return (
     <div key={tonalRange} className="space-y-3">
       {renderSlider({
-        id: `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Intensity` as any,
+        id: intensityControlId,
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 0.5, step: 0.01 // Max intensity for tint is 50%
+        min: 0, max: 0.5, step: 0.01
       }, true)}
 
       {intensityValue > 0 && (
         <div className="space-y-1.5 pl-6">
           <div className="flex items-center space-x-2">
-            <Label htmlFor={`tint${tonalRange}ColorSwatch`} className="text-xs text-muted-foreground shrink-0">
+            <Label htmlFor={colorControlId} className="text-xs text-muted-foreground shrink-0">
               Color:
             </Label>
             <div 
-              id={`tint${tonalRange}ColorSwatch`}
+              id={`${colorControlId}Swatch`}
               className="h-5 w-5 rounded-sm border border-input shrink-0" 
-              style={{ backgroundColor: colorValue || '#808080' }}
+              style={{ backgroundColor: displayColor }}
             />
           </div>
           <ColorSpectrumSlider
             onColorChange={(newColor) => {
               handleTintColorChange(tonalRange, newColor);
-              if (originalImage) setIsPreviewing(false);
             }}
-            className="h-4"
+            className="h-4" // Original height was 16, can be adjusted
           />
+          {renderSlider({
+            id: saturationControlId,
+            label: `Saturation`, // Removed "Tint" prefix for brevity
+            icon: Droplets, // Using Droplets icon for saturation
+            value: saturationValue,
+            min: 0, max: 1, step: 0.01
+          }, false, true)}
         </div>
       )}
     </div>
-  );
+    );
+  };
 
 
   return (
@@ -189,8 +219,8 @@ export function AdjustmentsSection() {
       
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Tint</Label>
-      {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity)}
-      {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity)}
+      {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation)}
+      {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation)}
 
       <Separator className="my-4" />
       <Label className="text-sm font-medium block">Effects</Label>
