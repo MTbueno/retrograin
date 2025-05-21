@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { initialImageSettings } from '@/contexts/ImageEditorContext';
-// piexif import removed
 
 const JPEG_QUALITY = 0.92; 
 
@@ -39,14 +38,12 @@ export function FileUploadSection() {
         return;
       }
       
-      // EXIF extraction logic removed
-
       const img = new Image();
       img.onload = () => {
         const baseFileName = file.name.replace(/\.[^/.]+$/, "");
         
         if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
-          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } }); // exifData removed
+          addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } });
         } else {
           // Convert non-JPEG to JPEG
           const tempCanvas = document.createElement('canvas');
@@ -60,7 +57,7 @@ export function FileUploadSection() {
             
             const jpegImage = new Image();
             jpegImage.onload = () => {
-              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings } }); // exifData removed
+              addImageObject({ imageElement: jpegImage, baseFileName, settings: { ...initialImageSettings } });
               toast({
                 title: 'Image Converted',
                 description: `${file.name} was converted to JPEG (quality: ${JPEG_QUALITY * 100}%).`,
@@ -80,7 +77,7 @@ export function FileUploadSection() {
               description: `Could not prepare ${file.name} for JPEG conversion. Using original.`,
               variant: 'destructive',
             });
-            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } }); // exifData removed
+            addImageObject({ imageElement: img, baseFileName, settings: { ...initialImageSettings } });
           }
         }
       };
@@ -106,14 +103,7 @@ export function FileUploadSection() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      if (files.length > 10) {
-        toast({
-          title: 'Too Many Files',
-          description: 'You can upload a maximum of 10 images at a time.',
-          variant: 'destructive',
-        });
-        return;
-      }
+      // Removed the 10 images limit check
       Array.from(files).forEach(processAndAddImage);
       
       if (fileInputRef.current) {
@@ -141,7 +131,7 @@ export function FileUploadSection() {
         <Upload className="mr-2 h-4 w-4" />
         Choose Image(s)
       </Button>
-      <p className="text-xs text-muted-foreground text-center">Up to 10 images. JPEGs preferred.</p>
+      <p className="text-xs text-muted-foreground text-center">JPEGs preferred.</p>
     </div>
   );
 }
