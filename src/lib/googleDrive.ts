@@ -16,7 +16,7 @@ let tokenClient: google.accounts.oauth2.TokenClient | null = null;
 /**
  * Loads the Google API client library (gapi) and initializes it.
  * This function should be called once.
- * @param callback Function to execute after gapi is loaded and initialized.
+ * param callback Function to execute after gapi is loaded and initialized.
  */
 export function loadGapi(callback: () => void): void {
   if (gapiLoadedAndInitialized) {
@@ -74,7 +74,7 @@ export function loadGapi(callback: () => void): void {
 /**
  * Initializes the Google OAuth 2.0 Token Client.
  * Should be called after both GAPI and GIS are loaded.
- * @param onTokenResponse Callback function to handle the token response.
+ * param onTokenResponse Callback function to handle the token response.
  */
 export function initTokenClient(onTokenResponse: (tokenResponse: google.accounts.oauth2.TokenResponse) => void): void {
   if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
@@ -140,7 +140,7 @@ export function revokeAccessToken(): void {
 /**
  * Checks if the user is currently authenticated with Google Drive
  * (i.e., gapi client has a valid access token).
- * @returns True if authenticated, false otherwise.
+ * returns True if authenticated, false otherwise.
  */
 export function isDriveAuthenticated(): boolean {
   // gapiLoadedAndInitialized implies gapi.client is available
@@ -152,7 +152,7 @@ export function isDriveAuthenticated(): boolean {
 /**
  * Ensures that a folder named "RetroGrain" exists in the user's Google Drive.
  * Creates the folder if it doesn't exist.
- * @returns The ID of the "RetroGrain" folder, or null if an error occurs.
+ * returns The ID of the "RetroGrain" folder, or null if an error occurs.
  */
 export async function ensureRetroGrainFolder(): Promise<string | null> {
   if (!isDriveAuthenticated()) {
@@ -203,10 +203,10 @@ export async function ensureRetroGrainFolder(): Promise<string | null> {
 
 /**
  * Uploads a file (from a data URI) to a specified folder in Google Drive.
- * @param folderId The ID of the folder to upload the file to.
- * @param fileName The base name for the file (without extension).
- * @param fileDataUrl The data URI of the file to upload (e.g., a JPEG image).
- * @returns The Google Drive File object if successful, or null otherwise.
+ * param folderId The ID of the folder to upload the file to.
+ * param fileName The base name for the file (without extension).
+ * param fileDataUrl The data URI of the file to upload (e.g., a JPEG image).
+ * returns The Google Drive File object if successful, or null otherwise.
  */
 export async function uploadFileToDrive(
   folderId: string,
