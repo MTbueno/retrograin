@@ -4,7 +4,7 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline } from 'lucide-react';
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Brush } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
@@ -13,7 +13,7 @@ export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
 
   const handleSliderChange = (
-    type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
+    type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' | 
           'highlights' | 'shadows' | 'blacks' | 
           'hueRotate' |
           'vignetteIntensity' | 'grainIntensity' | 
@@ -33,6 +33,9 @@ export function AdjustmentsSection() {
         break;
       case 'saturation':
         dispatchSettings({ type: 'SET_SATURATION', payload: value });
+        break;
+      case 'vibrance': // Handle vibrance
+        dispatchSettings({ type: 'SET_VIBRANCE', payload: value });
         break;
       case 'exposure':
         dispatchSettings({ type: 'SET_EXPOSURE', payload: value });
@@ -88,7 +91,7 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    if (originalImage) setIsPreviewing(false); // Use false after color selection for full render
+    if (originalImage) setIsPreviewing(false);
   };
 
   // Basic Adjustments
@@ -96,6 +99,7 @@ export function AdjustmentsSection() {
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 },
+    { id: 'vibrance', label: 'Vibrance', icon: Brush, value: settings.vibrance, min: -1, max: 1, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
     { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
@@ -124,7 +128,7 @@ export function AdjustmentsSection() {
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
-           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}` :
+           control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' || control.id === 'vibrance' ? `${Math.round(control.value * 100)}` :
            isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || control.id === 'saturation' ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`}
@@ -162,7 +166,7 @@ export function AdjustmentsSection() {
     const saturationControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Saturation` as any;
     const colorControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Color`;
 
-    let displayColor = colorValue || '#808080'; // Default to gray if no color
+    let displayColor = colorValue || '#808080'; 
     if (colorValue && saturationValue !== 1) {
         const rgbColor = hexToRgb(colorValue);
         if (rgbColor) {

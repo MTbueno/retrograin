@@ -28,10 +28,9 @@ export function ImageCanvas() {
     settings, 
     canvasRef, 
     isPreviewing,
+    noisePatternRef, 
+    applyCssFilters, // Get applyCssFilters from context
   } = useImageEditor();
-  const noiseCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const noisePatternRef = useRef<CanvasPattern | null>(null);
-
 
   const drawImageImmediately = useCallback(() => {
     const canvas = canvasRef.current;
@@ -41,16 +40,14 @@ export function ImageCanvas() {
     if (!ctx) return;
     
     const {
-      brightness, contrast, saturation, exposure, highlights, shadows, blacks, 
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
+      highlights, shadows,
       colorTemperature,
       tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation,
       tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation,
       vignetteIntensity, grainIntensity,
-      hueRotate, filter,
     } = settings;
 
-    // 1. Calculate source rectangle from original image based on crop settings
     let sWidth = originalImage.naturalWidth / cropZoom;
     let sHeight = originalImage.naturalHeight / cropZoom;
     const maxPanX = originalImage.naturalWidth - sWidth;
@@ -68,7 +65,6 @@ export function ImageCanvas() {
       return;
     }
 
-    // 2. Determine canvas buffer dimensions based on source rect and 90/270 rotation (content dimensions)
     let canvasPhysicalWidth = sWidth;
     let canvasPhysicalHeight = sHeight;
 
@@ -81,44 +77,28 @@ export function ImageCanvas() {
     const MAX_WIDTH_WIDE_RATIO = 960;     
     const MAX_PHYSICAL_HEIGHT_CAP = 1000; 
 
-    const currentAspectRatio = canvasPhysicalWidth > 0 ? canvasPhysicalWidth / canvasPhysicalHeight : 1; // Avoid division by zero
-    let targetMaxWidthForCanvas;
-
-    if (currentAspectRatio > 1.6) { 
-        targetMaxWidthForCanvas = MAX_WIDTH_WIDE_RATIO;
-    } else { 
-        targetMaxWidthForCanvas = MAX_WIDTH_STANDARD_RATIO;
-    }
+    const currentAspectRatio = canvasPhysicalWidth > 0 ? canvasPhysicalWidth / canvasPhysicalHeight : 1;
+    let targetMaxWidthForCanvas = (currentAspectRatio > 1.6) ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO;
 
     if (canvasPhysicalWidth > targetMaxWidthForCanvas) {
         canvasPhysicalHeight = canvasPhysicalWidth > 0 ? Math.round((targetMaxWidthForCanvas / canvasPhysicalWidth) * canvasPhysicalHeight) : targetMaxWidthForCanvas / currentAspectRatio;
         canvasPhysicalWidth = targetMaxWidthForCanvas;
     }
-    
     if (canvasPhysicalHeight > MAX_PHYSICAL_HEIGHT_CAP) {
         canvasPhysicalWidth = canvasPhysicalHeight > 0 ? Math.round((MAX_PHYSICAL_HEIGHT_CAP / canvasPhysicalHeight) * canvasPhysicalWidth) : MAX_PHYSICAL_HEIGHT_CAP * currentAspectRatio;
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
 
-    canvasPhysicalWidth = Math.max(1, Math.round(canvasPhysicalWidth));
-    canvasPhysicalHeight = Math.max(1, Math.round(canvasPhysicalHeight));
-
-    // 3. Set canvas buffer dimensions to the (capped) physical size.
-    // The preview scaling will now happen via ctx.scale()
-    canvas.width = canvasPhysicalWidth;
-    canvas.height = canvasPhysicalHeight;
-
-
+    canvas.width = Math.max(1, Math.round(canvasPhysicalWidth));
+    canvas.height = Math.max(1, Math.round(canvasPhysicalHeight));
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
 
-    // Apply internal scaling for preview mode
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
-
-    // Translate to center of the canvas's logical drawing surface.
-    // If previewing, this surface is effectively canvas.width * PREVIEW_SCALE_FACTOR wide.
+    
     const effectiveCanvasWidth = isPreviewing ? canvas.width / PREVIEW_SCALE_FACTOR : canvas.width;
     const effectiveCanvasHeight = isPreviewing ? canvas.height / PREVIEW_SCALE_FACTOR : canvas.height;
     
@@ -126,30 +106,8 @@ export function ImageCanvas() {
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(scaleX, scaleY);
     
-    ctx.filter = 'none'; // Explicitly reset filter before applying new one
-    const filters: string[] = [];
-    let finalBrightness = brightness;
-    finalBrightness += exposure; 
+    applyCssFilters(ctx, settings); // Use the function from context
     
-    let finalContrast = contrast;
-    if (blacks !== 0) { 
-      finalBrightness += blacks * 0.05;
-      finalContrast *= (1 - Math.abs(blacks) * 0.1);
-    }
-    finalContrast = Math.max(0, finalContrast);
-
-    if (Math.abs(finalBrightness - 1) > 0.001) filters.push(`brightness(${finalBrightness * 100}%)`);
-    if (Math.abs(finalContrast - 1) > 0.001) filters.push(`contrast(${finalContrast * 100}%)`);
-    if (Math.abs(saturation - 1) > 0.001) filters.push(`saturate(${saturation * 100}%)`);
-    if (Math.abs(hueRotate) > 0.001) filters.push(`hue-rotate(${hueRotate}deg)`);
-    if (filter) filters.push(filter);
-    
-    const trimmedFilterString = filters.join(' ').trim();
-    if (trimmedFilterString) {
-      ctx.filter = trimmedFilterString;
-    }
-    
-    // These are the content dimensions on the (potentially scaled by ctx.scale if previewing) canvas coordinate system
     const destDrawWidth = (rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth;
     const destDrawHeight = (rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight;
     
@@ -236,10 +194,11 @@ export function ImageCanvas() {
     }
 
     ctx.restore(); 
-  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]); 
+  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef, applyCssFilters]); 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const canvas = canvasRef.current;
+    if (typeof window !== 'undefined' && canvas && !noisePatternRef.current) {
         const noiseCv = document.createElement('canvas');
         noiseCv.width = NOISE_CANVAS_SIZE;
         noiseCv.height = NOISE_CANVAS_SIZE;
@@ -252,28 +211,24 @@ export function ImageCanvas() {
                 data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255;
             }
             noiseCtx.putImageData(imageData, 0, 0);
-            noiseCanvasRef.current = noiseCv;
-
-            const mainCanvas = canvasRef.current;
-            if (mainCanvas) {
-                const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
-                if (mainCtx && noiseCanvasRef.current) {
-                    try {
-                        noisePatternRef.current = mainCtx.createPattern(noiseCanvasRef.current, 'repeat');
-                    } catch (e) {
-                        console.error("Error creating noise pattern:", e);
-                        noisePatternRef.current = null;
-                    }
+            
+            const mainCtx = canvas.getContext('2d', { willReadFrequently: true });
+            if (mainCtx) {
+                try {
+                    noisePatternRef.current = mainCtx.createPattern(noiseCv, 'repeat');
+                } catch (e) {
+                    console.error("Error creating noise pattern:", e);
+                    noisePatternRef.current = null;
                 }
             }
         }
     }
-  }, [canvasRef]);
+  }, [canvasRef, noisePatternRef]);
 
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 150), 
-    [drawImageImmediately, isPreviewing]
+    [drawImageImmediately, isPreviewing] // isPreviewing is correctly in dependency array
   );
 
   useEffect(() => {
@@ -293,7 +248,9 @@ export function ImageCanvas() {
             }
         }
     }
-  }, [originalImage, settings, isPreviewing, drawImageImmediately, debouncedDrawImage]);
+  // IMPORTANT: drawImageImmediately and debouncedDrawImage change if their dependencies change.
+  // Adding them directly ensures this effect re-runs when the functions themselves are new.
+  }, [originalImage, settings, isPreviewing, drawImageImmediately, debouncedDrawImage, canvasRef]);
 
 
   if (!originalImage) {
@@ -313,3 +270,4 @@ export function ImageCanvas() {
   );
 }
 
+    
