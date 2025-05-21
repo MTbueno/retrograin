@@ -4,7 +4,7 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline } from 'lucide-react'; // Added Palette
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
@@ -15,7 +15,7 @@ export function AdjustmentsSection() {
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
           'highlights' | 'shadows' | 'blacks' | 
-          'hueRotate' | // Restored
+          'hueRotate' |
           'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 
           'tintShadowsIntensity' | 'tintShadowsSaturation' |
@@ -46,7 +46,7 @@ export function AdjustmentsSection() {
       case 'blacks':
         dispatchSettings({ type: 'SET_BLACKS', payload: value });
         break;
-      case 'hueRotate': // Restored
+      case 'hueRotate':
         dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
         break;
       case 'vignetteIntensity':
@@ -72,7 +72,7 @@ export function AdjustmentsSection() {
         break;
     }
   };
-
+  
   const handleTintColorChange = (
     tonalRange: 'shadows' | 'highlights',
     color: string
@@ -90,27 +90,30 @@ export function AdjustmentsSection() {
     }
     if (originalImage) setIsPreviewing(false); // Use false after color selection for full render
   };
-  
-  const generalAdjustments = [
+
+  // Basic Adjustments
+  const basicAdjustmentControls = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 }, // Max 2 for saturation
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
     { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
     { id: 'blacks', label: 'Blacks', icon: Baseline, value: settings.blacks, min: -1, max: 1, step: 0.01 },
   ];
 
-  const colorAdjustments = [
-    { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 }, // Restored
+  // Color Settings
+  const colorSettingControls = [
+    { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 },
     { id: 'colorTemperature', label: 'Temperature', icon: Thermometer, value: settings.colorTemperature, min: -100, max: 100, step: 1 },
   ];
-  
-  const effectAdjustments = [
+
+  // Effect Settings
+  const effectSettingControls = [
     { id: 'vignetteIntensity', label: 'Vignette', icon: CircleDot, value: settings.vignetteIntensity, min: 0, max: 1, step: 0.01 },
     { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 },
   ];
-
+  
   const renderSlider = (control: any, isIntensitySlider: boolean = false, isSaturationSlider: boolean = false) => (
     <div key={control.id} className="space-y-2">
       <div className="flex items-center justify-between">
@@ -120,7 +123,7 @@ export function AdjustmentsSection() {
         </Label>
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
-           control.id === 'hueRotate' ? `${Math.round(control.value)}°` : // Restored
+           control.id === 'hueRotate' ? `${Math.round(control.value)}°` :
            control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}` :
            isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || control.id === 'saturation' ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
@@ -134,7 +137,7 @@ export function AdjustmentsSection() {
         step={control.step}
         value={[control.value]}
         onValueChange={(val) => {
-          if (originalImage) setIsPreviewing(true); // Ensure preview is true during change
+          if (originalImage) setIsPreviewing(true);
           handleSliderChange(control.id as any, val[0]);
         }}
         disabled={!originalImage}
@@ -159,7 +162,7 @@ export function AdjustmentsSection() {
     const saturationControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Saturation` as any;
     const colorControlId = `tint${tonalRange.charAt(0).toUpperCase() + tonalRange.slice(1)}Color`;
 
-    let displayColor = colorValue || '#808080';
+    let displayColor = colorValue || '#808080'; // Default to gray if no color
     if (colorValue && saturationValue !== 1) {
         const rgbColor = hexToRgb(colorValue);
         if (rgbColor) {
@@ -209,24 +212,30 @@ export function AdjustmentsSection() {
     );
   };
 
-
   return (
     <div className="space-y-4 w-full max-w-[14rem] mx-auto">
+      {/* Basic Adjustments */}
       <Label className="text-sm font-medium block mb-2">Adjustments</Label>
-      {generalAdjustments.map(control => renderSlider(control))}
+      {basicAdjustmentControls.map(control => renderSlider(control))}
 
       <Separator className="my-4" />
+      
+      {/* Color Settings */}
       <Label className="text-sm font-medium block">Colors</Label>
-      {colorAdjustments.map(control => renderSlider(control))}
+      {colorSettingControls.map(control => renderSlider(control))}
       
       <Separator className="my-4" />
+
+      {/* Tint Settings */}
       <Label className="text-sm font-medium block">Tint</Label>
       {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation)}
       {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation)}
 
       <Separator className="my-4" />
+
+      {/* Effect Settings */}
       <Label className="text-sm font-medium block">Effects</Label>
-      {effectAdjustments.map(control => renderSlider(control))}
+      {effectSettingControls.map(control => renderSlider(control))}
     </div>
   );
 }

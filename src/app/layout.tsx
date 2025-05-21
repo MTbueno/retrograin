@@ -4,8 +4,9 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PwaRegistry } from '@/components/PwaRegistry';
+import { PwaInstallPrompt } from '@/components/PwaInstallPrompt'; // Import PwaInstallPrompt
 import { AuthProvider } from '@/contexts/AuthContext';
-import Script from 'next/script'; // Import Next.js Script component
+import Script from 'next/script'; 
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -44,9 +45,8 @@ export default function RootLayout({
           <AppLayout>{children}</AppLayout>
         </AuthProvider>
         <PwaRegistry />
-        {/* Google API client library script for gapi (Drive API operations) */}
+        <PwaInstallPrompt /> {/* Add PwaInstallPrompt here */}
         <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
-        {/* Google Identity Services (GIS) client script for OAuth2 tokens */}
         <Script
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
@@ -57,3 +57,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+    
