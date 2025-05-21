@@ -1,6 +1,7 @@
 
 "use client";
 
+import React, { useState, useEffect } from 'react';
 import {
   Sidebar,
   SidebarHeader,
@@ -29,16 +30,22 @@ const getVersionTimestamp = () => {
   return `${year}${month}${day}-${hours}${minutes}${seconds}`;
 };
 
-const APP_VERSION = getVersionTimestamp(); // Generate version on component load for now
-
 export function ControlPanel() {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAppVersion(getVersionTimestamp());
+  }, []);
+
   return (
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">
         <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
-        <p className="text-xs text-muted-foreground text-center mt-1">
-          Versão: {APP_VERSION}
-        </p>
+        {appVersion && (
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Versão: {appVersion}
+          </p>
+        )}
       </SidebarHeader>
       <SidebarContent asChild>
         <ScrollArea className="h-full">
