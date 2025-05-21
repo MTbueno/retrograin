@@ -4,11 +4,9 @@
 import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
-import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
-
-const PREVIEW_SCALE_FACTOR = 0.5;
-const NOISE_CANVAS_SIZE = 100;
+const PREVIEW_SCALE_FACTOR = 0.5; // Lower scale factor for faster preview
+const NOISE_CANVAS_SIZE = 100; // Size of the canvas used to generate the noise pattern
 const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
 const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; 
 
@@ -30,7 +28,7 @@ export function ImageCanvas() {
     settings, 
     canvasRef, 
     isPreviewing,
-    noisePatternRef, 
+    noiseSourceCanvasRef, // Changed from noisePatternRef
     applyCssFilters,
   } = useImageEditor();
 
@@ -43,25 +41,19 @@ export function ImageCanvas() {
     
     const {
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
-      highlights, 
-      shadows,
+      highlights, shadows,
       colorTemperature,
       tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation,
       tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation,
       vignetteIntensity, grainIntensity,
     } = settings;
 
-    // Calculate dimensions of the content to be drawn from the original image
     let contentWidth = originalImage.naturalWidth / cropZoom;
     let contentHeight = originalImage.naturalHeight / cropZoom;
 
-    // Calculate source sx, sy based on crop offsets
-    const maxPanX = originalImage.naturalWidth - contentWidth;
-    const maxPanY = originalImage.naturalHeight - contentHeight;
-    let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
-    let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
+    let sx = (cropOffsetX * 0.5 + 0.5) * (originalImage.naturalWidth - contentWidth);
+    let sy = (cropOffsetY * 0.5 + 0.5) * (originalImage.naturalHeight - contentHeight);
 
-    // Ensure crop dimensions are valid and positive
     contentWidth = Math.max(1, Math.round(contentWidth));
     contentHeight = Math.max(1, Math.round(contentHeight));
     sx = Math.max(0, Math.min(Math.round(sx), originalImage.naturalWidth - contentWidth));
@@ -72,7 +64,6 @@ export function ImageCanvas() {
       return;
     }
 
-    // Determine physical dimensions of the canvas buffer based on content and 90/270deg rotations
     let canvasPhysicalWidth, canvasPhysicalHeight;
     if (rotation === 90 || rotation === 270) {
       canvasPhysicalWidth = contentHeight;
@@ -82,7 +73,6 @@ export function ImageCanvas() {
       canvasPhysicalHeight = contentHeight;
     }
 
-    // Apply size limits to the physical canvas dimensions for performance
     const MAX_WIDTH_STANDARD_RATIO = 800; 
     const MAX_WIDTH_WIDE_RATIO = 960;     
     const MAX_PHYSICAL_HEIGHT_CAP = 1000; 
@@ -90,62 +80,49 @@ export function ImageCanvas() {
     let targetMaxWidthForCanvas = (currentAspectRatio > 1.6) ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO;
 
     if (canvasPhysicalWidth > targetMaxWidthForCanvas) {
-        canvasPhysicalHeight = canvasPhysicalWidth > 0 ? Math.round((targetMaxWidthForCanvas / canvasPhysicalWidth) * canvasPhysicalHeight) : targetMaxWidthForCanvas / currentAspectRatio;
+        canvasPhysicalHeight = canvasPhysicalWidth > 0 ? Math.round((targetMaxWidthForCanvas / canvasPhysicalWidth) * canvasPhysicalHeight) : Math.round(targetMaxWidthForCanvas / currentAspectRatio);
         canvasPhysicalWidth = targetMaxWidthForCanvas;
     }
     if (canvasPhysicalHeight > MAX_PHYSICAL_HEIGHT_CAP) {
-        canvasPhysicalWidth = canvasPhysicalHeight > 0 ? Math.round((MAX_PHYSICAL_HEIGHT_CAP / canvasPhysicalHeight) * canvasPhysicalWidth) : MAX_PHYSICAL_HEIGHT_CAP * currentAspectRatio;
+        canvasPhysicalWidth = canvasPhysicalHeight > 0 ? Math.round((MAX_PHYSICAL_HEIGHT_CAP / canvasPhysicalHeight) * canvasPhysicalWidth) : Math.round(MAX_PHYSICAL_HEIGHT_CAP * currentAspectRatio);
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
     
-    // Set canvas buffer size
     canvas.width = Math.max(1, Math.round(canvasPhysicalWidth));
     canvas.height = Math.max(1, Math.round(canvasPhysicalHeight));
     
-    // Start drawing
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
 
     let effectiveCanvasWidth = canvas.width;
     let effectiveCanvasHeight = canvas.height;
 
-    // Apply preview scaling internally using ctx.scale
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
-      // Effective dimensions are now larger because the context is scaled down
       effectiveCanvasWidth = Math.round(canvas.width / PREVIEW_SCALE_FACTOR);
       effectiveCanvasHeight = Math.round(canvas.height / PREVIEW_SCALE_FACTOR);
     }
     
-    // Center transformations
     ctx.translate(Math.round(effectiveCanvasWidth / 2), Math.round(effectiveCanvasHeight / 2));
     
-    // Apply 90-degree rotations and flips
     ctx.rotate((rotation * Math.PI) / 180); 
     ctx.scale(scaleX, scaleY); 
     
-    // Reset and apply CSS filters (brightness, contrast, saturation, etc.)
-    ctx.filter = 'none'; 
     applyCssFilters(ctx, settings); 
     
-    // Determine destination draw dimensions (should match the canvas area after 90deg rotations)
     const destDrawWidth = Math.round((rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth);
     const destDrawHeight = Math.round((rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight);
     
-    // Draw the cropped and transformed original image
     ctx.drawImage(
       originalImage,
-      sx, sy, contentWidth, contentHeight, // Source rectangle from original image
-      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight // Destination rectangle (centered)
+      sx, sy, contentWidth, contentHeight,
+      Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight
     );
 
-    // Reset CSS filters before applying canvas-based effects
     ctx.filter = 'none'; 
 
-    // Rectangle for applying canvas-based effects, matching the drawn image area
     const effectRectArgs: [number, number, number, number] = [ Math.round(-destDrawWidth / 2), Math.round(-destDrawHeight / 2), destDrawWidth, destDrawHeight ];
 
-    // Helper for blend effects
     const applyBlendEffect = (
         _ctx: CanvasRenderingContext2D,
         _rectArgs: [number, number, number, number],
@@ -163,7 +140,6 @@ export function ImageCanvas() {
       }
     };
         
-    // Apply Shadows & Highlights (Canvas operations)
     if (Math.abs(shadows) > 0.001) {
       const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
       if (shadows > 0) applyBlendEffect(ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen'); 
@@ -176,7 +152,6 @@ export function ImageCanvas() {
       else applyBlendEffect(ctx, effectRectArgs, 'rgb(200,200,200)', highlightAlpha, 'screen'); 
     }
     
-    // Apply Color Temperature (Canvas operation)
     if (Math.abs(colorTemperature) > 0.001) {
       const temp = colorTemperature / 100; 
       const alpha = Math.abs(temp) * 0.1; 
@@ -184,9 +159,9 @@ export function ImageCanvas() {
       applyBlendEffect(ctx, effectRectArgs, color, 1, 'overlay'); 
     }
 
-    // Apply Tint (Canvas operations)
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
       if (intensity > 0.001 && baseColorHex && baseColorHex !== '' && baseColorHex !== '#000000') {
+        const { hexToRgb, desaturateRgb, rgbToHex } = require('@/lib/colorUtils'); // Require inside for potential lazy load
         const rgbColor = hexToRgb(baseColorHex);
         if (rgbColor) {
           const saturatedRgb = desaturateRgb(rgbColor, saturationFactor);
@@ -199,7 +174,6 @@ export function ImageCanvas() {
     applyTintWithSaturation(tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation, 'color-dodge'); 
     applyTintWithSaturation(tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation, 'color-burn'); 
     
-    // Apply Vignette (Canvas operation)
     if (vignetteIntensity > 0.001) {
       const centerX = 0; 
       const centerY = 0;
@@ -215,27 +189,30 @@ export function ImageCanvas() {
     }
 
     // Apply Grain (Canvas operation)
-    if (grainIntensity > 0.001) {
-      if (noisePatternRef.current) {
-        console.log("Applying grain:", { grainIntensity, pattern: noisePatternRef.current ? 'exists' : 'null' });
+    const noiseCvElement = noiseSourceCanvasRef.current;
+    if (grainIntensity > 0.001 && noiseCvElement) {
+      const liveNoisePattern = ctx.createPattern(noiseCvElement, 'repeat');
+      if (liveNoisePattern) {
+        console.log("Applying grain for live preview:", { grainIntensity, pattern: 'created' });
         ctx.save();
-        ctx.fillStyle = noisePatternRef.current;
-        ctx.globalAlpha = grainIntensity * 0.5; // Increased opacity
+        ctx.fillStyle = liveNoisePattern;
+        ctx.globalAlpha = grainIntensity * 0.5;
         ctx.globalCompositeOperation = 'overlay';
         ctx.fillRect(...effectRectArgs); 
         ctx.restore(); 
       } else {
-        console.warn("Grain effect active, but noisePatternRef.current is null or undefined.");
+        console.warn("Could not create grain pattern for live preview.");
       }
+    } else if (grainIntensity > 0.001 && !noiseCvElement) {
+      console.warn("Grain effect active, but noiseSourceCanvasRef.current is null or undefined for live preview.");
     }
 
-    ctx.restore(); // Restore context from the initial save (includes preview scaling if active)
-  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef, applyCssFilters]); 
+    ctx.restore();
+  }, [originalImage, settings, canvasRef, isPreviewing, noiseSourceCanvasRef, applyCssFilters]); 
 
-  // Effect to create noise pattern
   useEffect(() => {
-    const currentCanvas = canvasRef.current; // Capture current value for the effect
-    if (typeof window !== 'undefined' && currentCanvas && !noisePatternRef.current) {
+    const currentCanvas = canvasRef.current;
+    if (typeof window !== 'undefined' && currentCanvas && !noiseSourceCanvasRef.current) { // Check against context's ref
         const noiseCv = document.createElement('canvas');
         noiseCv.width = NOISE_CANVAS_SIZE;
         noiseCv.height = NOISE_CANVAS_SIZE;
@@ -244,33 +221,23 @@ export function ImageCanvas() {
             const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                const rand = Math.floor(Math.random() * 256); // Full range noise
+                const rand = Math.floor(Math.random() * 256);
                 data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255; 
             }
             noiseCtx.putImageData(imageData, 0, 0);
-            
-            const mainCtx = currentCanvas.getContext('2d', { willReadFrequently: true }); 
-            if (mainCtx) {
-                try {
-                    noisePatternRef.current = mainCtx.createPattern(noiseCv, 'repeat');
-                    console.log("Noise pattern created:", noisePatternRef.current ? 'success' : 'failed');
-                } catch (e) {
-                    console.error("Error creating noise pattern:", e);
-                    noisePatternRef.current = null; 
-                }
-            } else {
-              console.warn("Main canvas context not available when trying to create noise pattern.");
-            }
+            noiseSourceCanvasRef.current = noiseCv; // Store the canvas element itself
+            console.log("Noise source canvas created and stored in context ref.");
+        } else {
+            console.warn("Could not get 2D context for noise canvas generation.");
         }
     }
-  }, [canvasRef.current]); // Depend on the actual canvas element instance
+  }, [canvasRef.current, noiseSourceCanvasRef]); // Depend on the actual canvas element and the context ref
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 150), 
     [drawImageImmediately, isPreviewing] 
   );
 
-  // Effect to redraw image when originalImage, settings, or isPreviewing changes
   useEffect(() => {
     if (originalImage) {
       if (isPreviewing) {
