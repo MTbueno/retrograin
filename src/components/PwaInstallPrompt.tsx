@@ -4,16 +4,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Download, ExternalLink } from 'lucide-react'; 
+import { Download, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function PwaInstallPrompt() {
   const [installPromptEvent, setInstallPromptEvent] = useState<any | null>(null); // Use 'any' for broader compatibility
   const [isVisible, setIsVisible] = useState(false);
   const [isPwaMode, setIsPwaMode] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false); // For hydration safety
   const { toast } = useToast();
 
   useEffect(() => {
+    setHasMounted(true); // Signal that the component has mounted on the client
+
     if (typeof window !== 'undefined') {
       const standalone = window.matchMedia('(display-mode: standalone)').matches;
       const minimalUi = window.matchMedia('(display-mode: minimal-ui)').matches;
@@ -21,7 +24,7 @@ export function PwaInstallPrompt() {
       setIsPwaMode(standalone || minimalUi || navigatorStandalone);
 
       const handleBeforeInstallPrompt = (event: Event) => {
-        event.preventDefault(); 
+        event.preventDefault();
         setInstallPromptEvent(event);
         // Only show the prompt if not already in PWA mode
         if (!(standalone || minimalUi || navigatorStandalone)) {
@@ -29,7 +32,7 @@ export function PwaInstallPrompt() {
         }
       };
       window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      
+
       // Check if already installed and hide if so
       window.addEventListener('appinstalled', () => {
         setIsVisible(false);
@@ -78,11 +81,15 @@ export function PwaInstallPrompt() {
     }
   }, [installPromptEvent, toast]);
 
+  if (!hasMounted) {
+    return null; // Render nothing on the server and on the client's initial render
+  }
+
   // Do not show any custom prompt if running as PWA or if the prompt is not available/visible
   if (isPwaMode || !isVisible) {
     return null;
   }
-  
+
   // Show custom install button if browser supports `beforeinstallprompt`
   if (installPromptEvent) {
     return (
@@ -117,7 +124,7 @@ export function PwaInstallPrompt() {
             <ExternalLink className="h-5 w-5" />
             <AlertTitle className="font-semibold">Adicionar à Tela de Início</AlertTitle>
             <AlertDescription className="text-sm text-muted-foreground">
-              Para instalar, toque no ícone de Compartilhar <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-share inline-block mx-1"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg> 
+              Para instalar, toque no ícone de Compartilhar <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-share inline-block mx-1"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
               e depois em "Adicionar à Tela de Início".
             </AlertDescription>
           </Alert>
@@ -140,5 +147,3 @@ export function PwaInstallPrompt() {
 
   return null;
 }
-
-    
