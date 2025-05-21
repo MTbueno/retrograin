@@ -14,8 +14,8 @@ let gapiLoadedAndInitialized = false; // True when gapi.client.init completes su
 let tokenClient: google.accounts.oauth2.TokenClient | null = null;
 
 /**
- * Loads the Google API client library (gapi) and initializes it.
- * This function should be called once.
+ * Initializes the Google API client library (gapi).
+ * Assumes gapi.js script is already loaded globally (e.g., via layout.tsx).
  * param callback Function to execute after gapi is loaded and initialized.
  */
 export function loadGapi(callback: (success: boolean) => void): void {
@@ -32,52 +32,48 @@ export function loadGapi(callback: (success: boolean) => void): void {
       "2. You RESTARTED your Next.js development server (npm run dev) after saving the .env file.\n" +
       "3. In Google Cloud Console, for this API Key: \n" +
       "   a. Under 'API restrictions', ensure 'Google Drive API' is allowed (or set to 'Don't restrict key' FOR TESTING ONLY).\n" +
-      "   b. Under 'Application restrictions', ensure 'HTTP referrers' are correctly set for your development (e.g., http://localhost:9002 or your Firebase Studio/Vercel domain) and production domains (or set to 'None' FOR TESTING ONLY).\n" +
+      "   b. Under 'Application restrictions', ensure 'HTTP referrers' are correctly set for your development (e.g., http://localhost:9002, your Firebase Studio/Vercel domain) and production domains (or set to 'None' FOR TESTING ONLY).\n" +
       "FAILURE TO DO SO WILL PREVENT GAPI FROM INITIALIZING."
     );
     if (callback) callback(false);
     return;
   }
 
-  const script = document.createElement('script');
-  script.src = 'https://apis.google.com/js/api.js';
-  script.async = true;
-  script.defer = true;
-  script.onload = () => {
-    window.gapi.load('client', async () => {
-      try {
-        await window.gapi.client.init({
-          apiKey: API_KEY,
-          discoveryDocs: DISCOVERY_DOCS,
-        });
-        gapiLoadedAndInitialized = true;
-        console.log("Google API Client (gapi) initialized successfully.");
-        if (callback) callback(true);
-      } catch (error: any) {
-        gapiLoadedAndInitialized = false;
-        console.error("Error initializing Google API client (gapi.client.init):", error);
-        console.error(
-            "DETAILED ERROR: Falha Crítica ao Inicializar a API do Google Drive (gapi.client.init).\n\n" +
-            "A CAUSA MAIS PROVÁVEL é um problema com a sua Chave de API do Google (`NEXT_PUBLIC_GOOGLE_API_KEY`) ou suas configurações no Google Cloud Console.\n\n" +
-            "VERIFIQUE ATENTAMENTE OS PONTOS MENCIONADOS NO ALERTA ANTERIOR SOBRE A CHAVE DE API E SUAS RESTRIÇÕES.\n\n" +
-            "Detalhes do erro técnico: " + (error.message || JSON.stringify(error))
-        );
-        if (callback) callback(false);
-      }
-    });
-  };
-  script.onerror = () => {
-    console.error("Failed to load the Google API script (gapi.js). Check network connection or script URL.");
+  if (typeof window.gapi === 'undefined') {
+    console.error("GAPI script (api.js) not loaded. Ensure it's included in your HTML (e.g., layout.tsx). Cannot initialize GAPI client.");
     if (callback) callback(false);
-  };
-  document.body.appendChild(script);
+    return;
+  }
+
+  window.gapi.load('client', async () => {
+    try {
+      await window.gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: DISCOVERY_DOCS,
+      });
+      gapiLoadedAndInitialized = true;
+      console.log("Google API Client (gapi) initialized successfully.");
+      if (callback) callback(true);
+    } catch (error: any) {
+      gapiLoadedAndInitialized = false;
+      console.error("Error initializing Google API client (gapi.client.init):", error);
+      console.error(
+          "DETAILED ERROR: Falha Crítica ao Inicializar a API do Google Drive (gapi.client.init).\n\n" +
+          "A CAUSA MAIS PROVÁVEL é um problema com a sua Chave de API do Google (`NEXT_PUBLIC_GOOGLE_API_KEY`) ou suas configurações no Google Cloud Console.\n\n" +
+          "VERIFIQUE ATENTAMENTE OS PONTOS MENCIONADOS NO ALERTA ANTERIOR SOBRE A CHAVE DE API E SUAS RESTRIÇÕES.\n\n" +
+          "Detalhes do erro técnico: " + (error.message || JSON.stringify(error))
+      );
+      if (callback) callback(false);
+    }
+  });
 }
 
 
 /**
  * Initializes the Google OAuth 2.0 Token Client.
- * Should be called after both GAPI and GIS are loaded.
+ * Should be called after GIS (Google Identity Services) script is loaded.
  * param onTokenResponse Callback function to handle the token response.
+ * returns True if initialization was attempted (GIS available, CLIENT_ID present), false otherwise.
  */
 export function initTokenClient(onTokenResponse: (tokenResponse: google.accounts.oauth2.TokenResponse) => void): boolean {
   if (typeof window.google === 'undefined' || !window.google.accounts || !window.google.accounts.oauth2) {
@@ -97,7 +93,7 @@ export function initTokenClient(onTokenResponse: (tokenResponse: google.accounts
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
-      callback: onTokenResponse, // This callback receives the token or error
+      callback: onTokenResponse, 
     });
     console.log("Google OAuth Token Client initialized.");
     return true;
@@ -114,7 +110,7 @@ export function initTokenClient(onTokenResponse: (tokenResponse: google.accounts
  */
 export function requestAccessToken(): void {
   if (tokenClient) {
-    tokenClient.requestAccessToken({ prompt: 'consent' }); // 'consent' forces the consent screen if not already granted for all scopes
+    tokenClient.requestAccessToken({ prompt: 'consent' }); 
   } else {
      console.error("Token client not initialized. Call initTokenClient() successfully first.");
   }
@@ -131,7 +127,9 @@ export function revokeAccessToken(): void {
   const currentGapiToken = window.gapi?.client?.getToken();
   if (currentGapiToken && currentGapiToken.access_token) {
     window.google.accounts.oauth2.revoke(currentGapiToken.access_token, () => {
-      window.gapi.client.setToken(null); // Clear the token from gapi client
+      if (window.gapi && window.gapi.client) {
+        window.gapi.client.setToken(null); // Clear the token from gapi client
+      }
       console.log('Google Drive access token revoked.');
     });
   } else {
@@ -144,12 +142,11 @@ export function revokeAccessToken(): void {
 
 /**
  * Checks if the user is currently authenticated with Google Drive
- * (i.e., gapi client has a valid access token).
+ * (i.e., gapi client has a valid access token and gapi itself is initialized).
  * returns True if authenticated, false otherwise.
  */
 export function isDriveAuthenticated(): boolean {
-  // gapiLoadedAndInitialized implies gapi.client is available
-  if (!gapiLoadedAndInitialized) return false;
+  if (!gapiLoadedAndInitialized) return false; // GAPI must be initialized
   const currentGapiToken = window.gapi?.client?.getToken();
   return !!(currentGapiToken && currentGapiToken.access_token);
 }
@@ -164,7 +161,7 @@ export async function ensureRetroGrainFolder(): Promise<string | null> {
     console.error("Not authenticated with Google Drive. Cannot ensure folder.");
     return null;
   }
-  if (!gapiLoadedAndInitialized || !window.gapi.client.drive) {
+  if (!gapiLoadedAndInitialized || !window.gapi?.client?.drive) {
     console.error("Google Drive API (gapi.client.drive) not loaded. Cannot ensure folder.");
     return null;
   }
@@ -173,7 +170,7 @@ export async function ensureRetroGrainFolder(): Promise<string | null> {
     const response = await window.gapi.client.drive.files.list({
       q: "mimeType='application/vnd.google-apps.folder' and name='RetroGrain' and trashed=false",
       fields: 'files(id, name)',
-      pageSize: 1, // We only need to find one
+      pageSize: 1,
     });
 
     const files = response.result.files;
@@ -222,7 +219,7 @@ export async function uploadFileToDrive(
     console.error("Not authenticated with Google Drive. Cannot upload file.");
     return null;
   }
-  if (!gapiLoadedAndInitialized || !window.gapi.client.drive) {
+  if (!gapiLoadedAndInitialized || !window.gapi?.client?.drive) {
     console.error("Google Drive API (gapi.client.drive) not loaded. Cannot upload file.");
     return null;
   }
@@ -276,8 +273,6 @@ export async function uploadFileToDrive(
 }
 
 // TypeScript type declarations for Google API (gapi) and Google Identity Services (google)
-// These are necessary because the Google types are not always perfectly inferred
-// when loaded via script tags.
 declare global {
   interface Window {
     gapi: any; 
