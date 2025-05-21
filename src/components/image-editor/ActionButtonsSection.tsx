@@ -37,15 +37,16 @@ export function ActionButtonsSection() {
   const { toast } = useToast();
   const { user: firebaseUser } = useAuth();
 
-  const [isGapiLoaded, setIsGapiLoaded] = useState(false);
-  const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
+  const [isGapiLoaded, setIsGapiLoaded] = useState(false); // Tracks GAPI script and gapi.client.init
+  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false); // Tracks if GIS is ready and tokenClient is initialized
+  const [isDriveAuthorized, setIsDriveAuthorized] = useState(false); // Tracks if user has granted Drive access token
   const [isConnectingOrSavingToDrive, setIsConnectingOrSavingToDrive] = useState(false);
 
   const handleTokenResponse = useCallback(async (tokenResponse: google.accounts.oauth2.TokenResponse) => {
     setIsConnectingOrSavingToDrive(false); 
 
     if (tokenResponse && tokenResponse.access_token) {
-      gapi.client.setToken({ access_token: tokenResponse.access_token });
+      window.gapi.client.setToken({ access_token: tokenResponse.access_token });
       if (isDriveAuthenticated()) {
         setIsDriveAuthorized(true);
         toast({ title: 'Google Drive Conectado!', description: 'Agora você pode salvar imagens no Drive.' });
@@ -65,27 +66,31 @@ export function ActionButtonsSection() {
 
 
   useEffect(() => {
-    loadGapi(() => {
-      setIsGapiLoaded(true);
-      // Check if GIS is available and then initTokenClient
-      if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
-        initTokenClient(handleTokenResponse);
-        if (isDriveAuthenticated()) {
-          setIsDriveAuthorized(true);
-        }
-      } else {
-        // GIS might not be ready immediately after gapi.client.init
-        // Attempt to initialize token client again after a short delay
-        const gisCheckInterval = setInterval(() => {
+    // Load GAPI first
+    loadGapi((gapiSuccess) => {
+      setIsGapiLoaded(gapiSuccess);
+      if (gapiSuccess) {
+        // If GAPI loaded, try to initialize GIS and TokenClient
+        // Poll for GIS readiness as it loads asynchronously from layout.tsx
+        let attempts = 0;
+        const maxAttempts = 10; // Try for 5 seconds (10 * 500ms)
+        const intervalId = setInterval(() => {
+          attempts++;
           if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
-            clearInterval(gisCheckInterval);
-            initTokenClient(handleTokenResponse);
-            if (isDriveAuthenticated()) {
-              setIsDriveAuthorized(true);
+            clearInterval(intervalId);
+            const tokenClientInitialized = initTokenClient(handleTokenResponse);
+            setIsDriveSdkReady(tokenClientInitialized);
+            if (tokenClientInitialized && isDriveAuthenticated()) {
+              setIsDriveAuthorized(true); // Check if already authorized from a previous session
             }
+          } else if (attempts >= maxAttempts) {
+            clearInterval(intervalId);
+            console.error("GIS (Google Identity Services) não carregou a tempo.");
+            setIsDriveSdkReady(false);
           }
-        }, 500); // Check every 500ms
-        setTimeout(() => clearInterval(gisCheckInterval), 5000); // Stop checking after 5 seconds
+        }, 500);
+      } else {
+        setIsDriveSdkReady(false); // GAPI failed to load
       }
     });
   }, [handleTokenResponse]);
@@ -164,31 +169,29 @@ export function ActionButtonsSection() {
     }
   };
 
-  const handleSaveToDrive = async () => {
+  const handleDriveAction = () => {
     if (!firebaseUser) {
-      toast({ title: 'Não Logado', description: 'Por favor, faça login para salvar no Google Drive.', variant: 'default' });
+      toast({ title: 'Não Logado', description: 'Por favor, faça login para usar o Google Drive.', variant: 'default' });
       return;
     }
-
-    if (!isGapiLoaded) {
-      toast({ title: 'API do Google não carregada', description: 'Por favor, aguarde um momento e tente novamente.', variant: 'default' });
+    if (!isDriveSdkReady) {
+      toast({ title: 'SDK do Drive não está pronto', description: 'Aguarde um momento e tente novamente.', variant: 'default' });
       return;
     }
-     // Ensure initTokenClient has been called if GIS is ready
-    if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2 && !tokenClient) { // tokenClient is not exported from googleDrive.ts, so this check is tricky
-        // This situation means GIS is loaded but our initTokenClient might not have run yet.
-        // Try to initialize it. This might be redundant if the useEffect already handled it.
-        initTokenClient(handleTokenResponse);
-    }
-
 
     if (!isDriveAuthenticated()) {
+      setIsConnectingOrSavingToDrive(true);
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
-      setIsConnectingOrSavingToDrive(true); 
-      requestAccessToken(); 
-      return; 
+      requestAccessToken();
+      // handleTokenResponse will set isConnectingOrSavingToDrive to false or handle error
+    } else {
+      // If already authenticated, proceed to save
+      saveToDrive();
     }
+  };
 
+
+  const saveToDrive = async () => {
     if (!originalImage) {
       toast({ title: 'Nenhuma Imagem', description: 'Por favor, carregue e edite uma imagem para salvar.', variant: 'default' });
       setIsConnectingOrSavingToDrive(false);
@@ -279,7 +282,7 @@ export function ActionButtonsSection() {
         isDriveAuthorized ? (
           <>
             <Button
-              onClick={handleSaveToDrive}
+              onClick={saveToDrive} // Direct call to saveToDrive
               disabled={isConnectingOrSavingToDrive || !originalImage}
               variant="default"
               className="w-full"
@@ -293,8 +296,8 @@ export function ActionButtonsSection() {
           </>
         ) : (
           <Button
-            onClick={handleSaveToDrive} 
-            disabled={!isGapiLoaded || isConnectingOrSavingToDrive}
+            onClick={handleDriveAction} // Calls requestAccessToken if not authenticated
+            disabled={!isDriveSdkReady || isConnectingOrSavingToDrive}
             variant="outline"
             className="w-full"
           >
