@@ -60,7 +60,8 @@ const applyCssFilters = (
     }
   }
   
-  ctx.filter = 'none'; // Explicitly reset before applying new filter
+  // Explicitly reset filter before applying a new one
+  ctx.filter = 'none'; 
   if (trimmedFilterString) { 
     ctx.filter = trimmedFilterString;
   }
@@ -142,6 +143,8 @@ export function ImageCanvas() {
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(scaleX, scaleY);
 
+    // Explicitly set filter to none before applying CSS filters
+    ctx.filter = 'none';
     applyCssFilters(ctx, settings);
 
     ctx.drawImage(
@@ -153,6 +156,7 @@ export function ImageCanvas() {
       finalDestHeight
     );
 
+    // Explicitly set filter to none after drawing with CSS filters and before other canvas effects
     ctx.filter = 'none'; 
     
     const rectArgs: [number, number, number, number] = [
