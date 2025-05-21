@@ -14,15 +14,15 @@ const applyCssFilters = (
   let filterString = '';
 
   // Ensure all setting values are numbers and have defaults
-  const baseBrightnessSetting = typeof settings.brightness === 'number' ? settings.brightness : 1;
-  const baseContrastSetting = typeof settings.contrast === 'number' ? settings.contrast : 1;
+  const brightnessSetting = typeof settings.brightness === 'number' ? settings.brightness : 1;
+  const contrastSetting = typeof settings.contrast === 'number' ? settings.contrast : 1;
   const saturationVal = typeof settings.saturation === 'number' ? settings.saturation : 1;
   const exposureVal = typeof settings.exposure === 'number' ? settings.exposure : 0;
   const blacksVal = typeof settings.blacks === 'number' ? settings.blacks : 0;
   const hueRotateVal = typeof settings.hueRotate === 'number' ? settings.hueRotate : 0;
 
-  let finalBrightness = baseBrightnessSetting;
-  let finalContrast = baseContrastSetting;
+  let finalBrightness = brightnessSetting;
+  let finalContrast = contrastSetting;
 
   // Adjust brightness and contrast based on 'blacks'
   if (blacksVal !== 0) {
@@ -31,15 +31,12 @@ const applyCssFilters = (
   }
 
   // Adjust brightness based on 'exposure'
-  // Exposure is additive to brightness percentage, so 1 + exposure means 0 exposure = 100% brightness
-  // If exposure is +0.1, brightness becomes 1.1x
-  // If exposure is -0.1, brightness becomes 0.9x
   finalBrightness *= (1 + exposureVal);
 
 
   // Clamp final brightness and contrast to avoid extreme values
-  finalBrightness = Math.max(0, Math.min(3, finalBrightness)); 
-  finalContrast = Math.max(0, Math.min(3, finalContrast));   
+  finalBrightness = Math.max(0.1, Math.min(3, finalBrightness)); // Ensure brightness doesn't go to 0
+  finalContrast = Math.max(0.1, Math.min(3, finalContrast));   
 
 
   if (finalBrightness !== 1) filterString += `brightness(${finalBrightness * 100}%) `;
@@ -63,7 +60,7 @@ const applyCssFilters = (
     }
   }
   
-  ctx.filter = 'none'; 
+  ctx.filter = 'none'; // Explicitly reset before applying new filter
   if (trimmedFilterString) { 
     ctx.filter = trimmedFilterString;
   }
@@ -95,7 +92,7 @@ export function ImageCanvas() {
     const canvas = canvasRef.current;
     if (!canvas || !originalImage) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
     if (noiseCanvasRef.current && (!noisePatternRef.current || ctx.createPattern(noiseCanvasRef.current, 'repeat') === null)) {
@@ -125,22 +122,19 @@ export function ImageCanvas() {
     
     let canvasBufferWidth, canvasBufferHeight;
     if (rotation === 90 || rotation === 270) {
-      canvasBufferWidth = sHeight * Math.abs(scaleY);
-      canvasBufferHeight = sWidth * Math.abs(scaleX);
+      canvasBufferWidth = sHeight; 
+      canvasBufferHeight = sWidth;
     } else {
-      canvasBufferWidth = sWidth * Math.abs(scaleX);
-      canvasBufferHeight = sHeight * Math.abs(scaleY);
+      canvasBufferWidth = sWidth;
+      canvasBufferHeight = sHeight;
     }
 
     const currentScaleFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1;
-    canvas.width = Math.round(canvasBufferWidth * currentScaleFactor);
-    canvas.height = Math.round(canvasBufferHeight * currentScaleFactor);
+    canvas.width = Math.round(canvasBufferWidth * currentScaleFactor * Math.abs(scaleX));
+    canvas.height = Math.round(canvasBufferHeight * currentScaleFactor * Math.abs(scaleY));
     
-    const destX = -canvas.width / 2 / Math.abs(scaleX);
-    const destY = -canvas.height / 2 / Math.abs(scaleY);
-    const finalDrawWidth = canvas.width / Math.abs(scaleX) ;
-    const finalDrawHeight = canvas.height / Math.abs(scaleY) ;
-
+    const finalDestWidth = canvas.width / Math.abs(scaleX);
+    const finalDestHeight = canvas.height / Math.abs(scaleY);
 
     ctx.save();
     
@@ -149,26 +143,24 @@ export function ImageCanvas() {
     ctx.scale(scaleX, scaleY);
 
     applyCssFilters(ctx, settings);
-    ctx.filter = ctx.filter; // Speculative "kick" for Safari
 
     ctx.drawImage(
       originalImage,
       sx, sy, sWidth, sHeight,            
-      destX, 
-      destY,
-      finalDrawWidth,        
-      finalDrawHeight
+      -finalDestWidth / 2, 
+      -finalDestHeight / 2,
+      finalDestWidth,        
+      finalDestHeight
     );
 
     ctx.filter = 'none'; 
     
     const rectArgs: [number, number, number, number] = [
-      destX, 
-      destY, 
-      finalDrawWidth, 
-      finalDrawHeight
+      -finalDestWidth / 2, 
+      -finalDestHeight / 2, 
+      finalDestWidth, 
+      finalDestHeight
     ];
-
 
     // Shadows (Canvas specific)
     if (settings.shadows > 0) { 
@@ -227,9 +219,10 @@ export function ImageCanvas() {
         }
       }
     };
-
-    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
-    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
+    
+    // Order: Shadows first, then Highlights
+    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge'); // Shadows tint uses color-dodge
+    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn'); // Highlights tint uses color-burn
     
     ctx.globalAlpha = 1.0;
     ctx.globalCompositeOperation = 'source-over';
@@ -238,8 +231,8 @@ export function ImageCanvas() {
       const centerX = 0; 
       const centerY = 0;
       
-      const vignetteCanvasWidth = finalDrawWidth;
-      const vignetteCanvasHeight = finalDrawHeight;
+      const vignetteCanvasWidth = finalDestWidth;
+      const vignetteCanvasHeight = finalDestHeight;
 
       const radiusX = vignetteCanvasWidth / 2;
       const radiusY = vignetteCanvasHeight / 2;
@@ -253,28 +246,25 @@ export function ImageCanvas() {
     }
 
     if (settings.grainIntensity > 0 && noisePatternRef.current) {
-        ctx.save(); // Save before applying grain effect with its own transforms
-        // The grain pattern should be applied in the untransformed space of the current drawing area
-        // so we need to translate back from the center for the fillRect
-        ctx.translate(-finalDrawWidth/2, -finalDrawHeight/2);
+        ctx.save(); 
+        ctx.translate(-finalDestWidth/2, -finalDestHeight/2);
 
         ctx.fillStyle = noisePatternRef.current;
         ctx.globalAlpha = settings.grainIntensity * 0.5;
         ctx.globalCompositeOperation = 'overlay';
-        // Fill the entire visible area of the image, not the whole canvas if image is smaller
-        ctx.fillRect(0, 0, finalDrawWidth, finalDrawHeight); 
-        ctx.restore(); // Restore to state before grain
+        ctx.fillRect(0, 0, finalDestWidth, finalDestHeight); 
+        ctx.restore(); 
     }
 
     ctx.restore();
-  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]);
+  }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]); // noisePatternRef added
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
         const noiseCv = document.createElement('canvas');
         noiseCv.width = NOISE_CANVAS_SIZE;
         noiseCv.height = NOISE_CANVAS_SIZE;
-        const noiseCtx = noiseCv.getContext('2d');
+        const noiseCtx = noiseCv.getContext('2d', { willReadFrequently: true });
         if (noiseCtx) {
             const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
             const data = imageData.data;
@@ -290,7 +280,7 @@ export function ImageCanvas() {
 
             const mainCanvas = canvasRef.current;
             if (mainCanvas) {
-                const mainCtx = mainCanvas.getContext('2d');
+                const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
                 if (mainCtx && noiseCanvasRef.current) {
                     noisePatternRef.current = mainCtx.createPattern(noiseCanvasRef.current, 'repeat');
                 }
@@ -315,13 +305,14 @@ export function ImageCanvas() {
     } else {
         const canvas = canvasRef.current;
         if (canvas) {
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             if (ctx) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.filter = 'none'; // Ensure filter is reset when clearing
             }
         }
     }
-  }, [originalImage, settings, isPreviewing, drawImageImmediately, debouncedDrawImage]);
+  }, [originalImage, settings, isPreviewing, canvasRef, drawImageImmediately, debouncedDrawImage]);
 
 
   if (!originalImage) {
@@ -339,3 +330,5 @@ export function ImageCanvas() {
     />
   );
 }
+
+    
