@@ -8,7 +8,6 @@ import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-// piexif import removed
 import {
   loadGapi,
   initTokenClient,
@@ -19,7 +18,7 @@ import {
   revokeAccessToken
 } from '@/lib/googleDrive';
 
-const JPEG_QUALITY = 0.92;
+const JPEG_QUALITY = 0.92; // Kept for future reference if WebGL export uses it
 
 export function ActionButtonsSection() {
   const {
@@ -27,8 +26,8 @@ export function ActionButtonsSection() {
     allImages,
     dispatchSettings,
     baseFileName, 
-    getCanvasDataURL,
-    generateImageDataUrlWithSettings,
+    getCanvasDataURL, // This will return null during WebGL transition
+    generateImageDataUrlWithSettings, // This will return null during WebGL transition
     setIsPreviewing,
     copyActiveSettings,
     pasteSettingsToActiveImage,
@@ -51,8 +50,6 @@ export function ActionButtonsSection() {
       if (window.gapi && window.gapi.client) {
         window.gapi.client.setToken({ access_token: tokenResponse.access_token });
       }
-      // Adding a small delay for gapi.client to fully process the token
-      // and for isDriveAuthenticated() to reflect the new state.
       setTimeout(() => {
         if (isDriveAuthenticated()) {
           setIsDriveAuthorized(true);
@@ -62,7 +59,7 @@ export function ActionButtonsSection() {
           console.error("Token do Drive recebido, mas isDriveAuthenticated() ainda é falso após um atraso.");
           toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização.', variant: 'destructive' });
         }
-      }, 500); // 500ms delay
+      }, 500);
     } else {
       setIsDriveAuthorized(false);
       const errorDescription = (tokenResponse as any)?.error_description || "Falha ao obter token de acesso do Google Drive.";
@@ -79,6 +76,33 @@ export function ActionButtonsSection() {
     const maxGisAttempts = 20;
     let gisInitAttempted = false;
 
+    function tryInitGis() {
+      if (gisInitAttempted) return;
+
+      if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
+        gisInitAttempted = true; 
+        const tokenClientSuccess = initTokenClient(handleTokenResponse);
+        setIsDriveSdkReady(tokenClientSuccess);
+        if (tokenClientSuccess) {
+          console.log("GIS Token Client init attempted. Checking if already authorized.");
+          if (isDriveAuthenticated()) {
+            setIsDriveAuthorized(true);
+            console.log("Already authorized with Google Drive.");
+          }
+        } else {
+          // toast({ title: 'Erro GIS', description: 'Não foi possível inicializar o cliente de token GIS.', variant: 'destructive' });
+          // Problem with this toast is that it can fire too early or repeatedly
+          console.warn("Failed to initialize GIS token client during tryInitGis.");
+        }
+      } else if (gisAttempts < maxGisAttempts) {
+        gisAttempts++;
+        setTimeout(tryInitGis, 500);
+      } else {
+        console.error("GIS (Google Identity Services) não carregou a tempo.");
+        // toast({ title: 'Erro GIS', description: 'Timeout ao carregar Google Identity Services.', variant: 'destructive' });
+      }
+    }
+
     function tryInitGapi() {
       if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
         loadGapi((success) => {
@@ -87,52 +111,27 @@ export function ActionButtonsSection() {
             console.log("GAPI client loaded. Proceeding to GIS initialization check.");
             tryInitGis(); 
           } else {
-            toast({ title: 'Erro GAPI', description: 'Não foi possível carregar a biblioteca GAPI do Google.', variant: 'destructive' });
+            // toast({ title: 'Erro GAPI', description: 'Não foi possível carregar a biblioteca GAPI do Google.', variant: 'destructive' });
+             console.warn("Failed to load GAPI client.");
           }
         });
       } else if (gapiAttempts < maxGapiAttempts) {
         gapiAttempts++;
-        setTimeout(tryInitGapi, 500);
+        setTimeout(tryInitGapi, 500); // Retry GAPI load
       } else {
         console.error("GAPI (Google API Client Library) não carregou a tempo.");
-        toast({ title: 'Erro GAPI', description: 'Timeout ao carregar a biblioteca GAPI.', variant: 'destructive' });
+        // toast({ title: 'Erro GAPI', description: 'Timeout ao carregar a biblioteca GAPI.', variant: 'destructive' });
       }
     }
-
-    function tryInitGis() {
-      if (gisInitAttempted) return; // Prevent multiple initialization attempts
-
-      if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
-        gisInitAttempted = true; 
-        const tokenClientSuccess = initTokenClient(handleTokenResponse);
-        setIsDriveSdkReady(tokenClientSuccess); // Update based on actual init attempt
-        if (tokenClientSuccess) {
-          console.log("GIS Token Client init attempted. Checking if already authorized.");
-          if (isDriveAuthenticated()) { // Check if already authorized
-            setIsDriveAuthorized(true);
-            console.log("Already authorized with Google Drive.");
-          }
-        } else {
-          toast({ title: 'Erro GIS', description: 'Não foi possível inicializar o cliente de token GIS.', variant: 'destructive' });
-        }
-      } else if (gisAttempts < maxGisAttempts) {
-        gisAttempts++;
-        setTimeout(tryInitGis, 500);
-      } else {
-        console.error("GIS (Google Identity Services) não carregou a tempo.");
-        toast({ title: 'Erro GIS', description: 'Timeout ao carregar Google Identity Services.', variant: 'destructive' });
-      }
-    }
-
-    if (firebaseUser) { // Only attempt GAPI/GIS loading if user is logged in
+    
+    if (firebaseUser) {
         tryInitGapi();
     } else {
-        // Reset Drive states if user logs out
         setIsGapiClientInitialized(false);
         setIsDriveSdkReady(false);
         setIsDriveAuthorized(false);
     }
-  }, [handleTokenResponse, toast, firebaseUser]);
+  }, [handleTokenResponse, firebaseUser]);
 
 
   const handleDriveAction = () => {
@@ -143,11 +142,9 @@ export function ActionButtonsSection() {
     if (!isGapiClientInitialized || !isDriveSdkReady) {
       toast({ title: 'SDK do Drive não está pronto', description: 'Aguarde um momento e tente novamente. Verifique o console para erros.', variant: 'default' });
       console.warn("Drive SDK not ready. GAPI initialized:", isGapiClientInitialized, "Drive SDK (GIS) ready:", isDriveSdkReady);
-      // Potentially re-trigger GIS init if GAPI is loaded but GIS isn't
-      if (isGapiClientInitialized && !isDriveSdkReady) {
-        // This assumes tryInitGis can be safely called again or has internal guards
-        // initTokenClient(handleTokenResponse); // Or a more controlled re-init sequence
-        console.log("Attempting to re-check/init GIS as GAPI is loaded but GIS might not be.");
+      if (isGapiClientInitialized && !isDriveSdkReady && !isConnectingOrSavingToDrive) {
+         console.log("Attempting to re-check/init GIS as GAPI is loaded but GIS might not be.");
+         initTokenClient(handleTokenResponse); // Attempt to re-init GIS
       }
       return;
     }
@@ -161,8 +158,6 @@ export function ActionButtonsSection() {
     }
   };
 
-  // createExifWithComment function removed
-
   const saveToDrive = async () => {
     const activeImgObject = allImages.find(img => img.id === activeImageId);
     if (!activeImgObject || !originalImage) {
@@ -171,15 +166,18 @@ export function ActionButtonsSection() {
       return;
     }
 
+    let currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
+    if (!currentImageURI) {
+        toast({ title: 'Erro ao Salvar', description: 'Não foi possível gerar dados da imagem para o Drive (Funcionalidade temporariamente indisponível com WebGL).', variant: 'destructive' });
+        setIsConnectingOrSavingToDrive(false);
+        return;
+    }
+    
     setIsConnectingOrSavingToDrive(true);
     toast({ title: 'Salvando no Drive...', description: 'Por favor, aguarde.' });
     try {
       const folderId = await ensureRetroGrainFolder();
       if (folderId) {
-        let currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
-
-        // EXIF insertion logic removed
-        
         if (currentImageURI) {
           const savedFile = await uploadFileToDrive(folderId, `${activeImgObject.baseFileName}_retrograin`, currentImageURI);
           if (savedFile && savedFile.id) {
@@ -187,8 +185,6 @@ export function ActionButtonsSection() {
           } else {
              toast({ title: 'Erro ao Salvar', description: 'Não foi possível confirmar o salvamento do arquivo no Drive.', variant: 'destructive' });
           }
-        } else {
-          toast({ title: 'Erro', description: 'Não foi possível gerar os dados da imagem para salvar.', variant: 'destructive' });
         }
       } else {
          toast({ title: 'Erro na Pasta', description: 'Não foi possível criar ou encontrar a pasta RetroGrain no Drive.', variant: 'destructive' });
@@ -243,8 +239,6 @@ export function ActionButtonsSection() {
       const activeImgObject = allImages.find(img => img.id === activeImageId);
       let dataURL = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
       
-      // EXIF insertion logic removed
-
       if (dataURL) {
         const link = document.createElement('a');
         link.href = dataURL;
@@ -254,17 +248,23 @@ export function ActionButtonsSection() {
         document.body.removeChild(link);
         toast({ title: 'Download Iniciado!', description: `${activeImgObject?.baseFileName || baseFileName}_retrograin.jpg` });
       } else {
-        toast({ title: 'Erro no Download', description: 'Não foi possível gerar a imagem para download.', variant: 'destructive' });
+        toast({ title: 'Erro no Download', description: 'Não foi possível gerar a imagem para download (Funcionalidade temporariamente indisponível com WebGL).', variant: 'destructive' });
       }
     } else { 
-      const zip = new JSZip();
-      toast({ title: 'Preparando ZIP...', description: 'Gerando imagens, por favor aguarde.' });
+      toast({ title: 'Preparando ZIP...', description: 'Gerando imagens (Funcionalidade temporariamente indisponível com WebGL).' });
+      // ZIP functionality is temporarily disabled due to WebGL export changes
+      const zipUnavailable = true; 
+      if (zipUnavailable) {
+          toast({ title: 'Download em Lote Indisponível', description: 'O download de múltiplas imagens (ZIP) está temporariamente desabilitado durante a atualização para WebGL.', variant: 'default' });
+          return;
+      }
 
+      // Kept for future reference when WebGL export for ZIP is ready
+      /*
+      const zip = new JSZip();
       for (const imgObject of allImages) {
         let dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY);
         
-        // EXIF insertion logic removed
-
         if (dataURL) {
           const response = await fetch(dataURL);
           const blob = await response.blob();
@@ -289,6 +289,7 @@ export function ActionButtonsSection() {
           console.error("Error generating ZIP:", err);
           toast({ title: 'Erro ao Gerar ZIP', description: err.message || 'Não foi possível criar o arquivo ZIP.', variant: 'destructive' });
         });
+      */
     }
   };
 

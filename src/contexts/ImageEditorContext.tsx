@@ -16,7 +16,7 @@ export interface ImageSettings {
   whites: number;
   blacks: number;
   // sharpness: number; // Removed
-  hueRotate: number; 
+  // hueRotate: number; // Temporarily disabled for WebGL transition
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
@@ -32,7 +32,7 @@ export interface ImageSettings {
   cropZoom: number; // 1 = no zoom, >1 = zoom in
   cropOffsetX: number; // -1 to 1
   cropOffsetY: number; // -1 to 1
-  filter: string | null; // For preset CSS filters
+  filter: string | null; // For preset CSS filters, temporarily disabled for WebGL
 }
 
 export const initialImageSettings: ImageSettings = {
@@ -45,8 +45,7 @@ export const initialImageSettings: ImageSettings = {
   shadows: 0,
   whites: 0,
   blacks: 0,
-  // sharpness: 0, // Removed
-  hueRotate: 0, 
+  // hueRotate: 0, // Temporarily disabled
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
@@ -62,7 +61,7 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
-  filter: null,
+  filter: null, // Temporarily disabled
 };
 
 export interface ImageObject {
@@ -83,8 +82,7 @@ export type SettingsAction =
   | { type: 'SET_SHADOWS'; payload: number }
   | { type: 'SET_WHITES'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
-  // | { type: 'SET_SHARPNESS'; payload: number } // Removed
-  | { type: 'SET_HUE_ROTATE'; payload: number } 
+  // | { type: 'SET_HUE_ROTATE'; payload: number } // Temporarily disabled
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -104,7 +102,7 @@ export type SettingsAction =
   | { type: 'RESET_CROP_AND_ANGLE' } 
   | { type: 'RESET_SETTINGS' }
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings }
-  | { type: 'APPLY_FILTER'; payload: string | null };
+  | { type: 'APPLY_FILTER'; payload: string | null }; // Temporarily disabled
 
 function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSettings {
   switch (action.type) {
@@ -126,10 +124,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, whites: action.payload };
     case 'SET_BLACKS':
       return { ...state, blacks: action.payload };
-    // case 'SET_SHARPNESS': // Removed
-    //   return { ...state, sharpness: action.payload };
-    case 'SET_HUE_ROTATE': 
-      return { ...state, hueRotate: action.payload };
+    // case 'SET_HUE_ROTATE': // Temporarily disabled
+    //   return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -164,7 +160,7 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
     case 'RESET_CROP_AND_ANGLE': 
       return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
-    case 'APPLY_FILTER':
+    case 'APPLY_FILTER': // Temporarily disabled
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
       return { ...initialImageSettings, 
@@ -182,216 +178,30 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
   }
 }
 
+/*
+// applyCssFiltersToContext is temporarily disabled for WebGL transition
 export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings: ImageSettings) => {
-  ctx.filter = 'none'; 
-  const filters: string[] = [];
-
-  let baseBrightness = settings.brightness;
-  let baseContrast = settings.contrast;
-  let baseSaturation = settings.saturation;
-
-  if (settings.exposure !== 0) {
-    baseBrightness += settings.exposure;
-  }
-  
-  if (settings.blacks !== 0) {
-    baseBrightness += settings.blacks * 0.1; 
-    baseContrast *= (1 - Math.abs(settings.blacks) * 0.15); 
-  }
-  
-  if (settings.whites !== 0) {
-    baseBrightness += settings.whites * 0.15; 
-    if (settings.whites > 0) {
-      baseContrast *= (1 - settings.whites * 0.1); 
-    } else {
-      baseContrast *= (1 - settings.whites * 0.05); 
-    }
-  }
-
-  if (settings.vibrance > 0) {
-    baseSaturation = settings.saturation * (1 + settings.vibrance * 0.5);
-    baseContrast = baseContrast * (1 + settings.vibrance * 0.2);
-  } else if (settings.vibrance < 0) {
-    baseSaturation = settings.saturation * (1 + settings.vibrance * 0.8); 
-  }
-
-  // Sharpness logic removed
-  // baseContrast = baseContrast * (1 + settings.sharpness * 0.2);
-
-  const finalBrightness = Math.max(0, Math.min(3, baseBrightness));
-  const finalContrast = Math.max(0, Math.min(3, baseContrast));
-  const finalSaturation = Math.max(0, Math.min(3, baseSaturation));
-
-  if (Math.abs(finalBrightness - 1) > 0.001) filters.push(`brightness(${finalBrightness * 100}%)`);
-  if (Math.abs(finalContrast - 1) > 0.001) filters.push(`contrast(${finalContrast * 100}%)`);
-  if (Math.abs(finalSaturation - 1) > 0.001) filters.push(`saturate(${finalSaturation * 100}%)`);
-  
-  if (settings.hueRotate !== 0 && Math.abs(settings.hueRotate) > 0.5) { 
-    filters.push(`hue-rotate(${Math.round(settings.hueRotate)}deg)`);
-  }
-
-  if (settings.filter) { 
-    filters.push(settings.filter);
-  }
-
-  const trimmedFilterString = filters.join(' ').trim();
-  // console.log('[ImageEditorContext] Hue Rotate Value:', settings.hueRotate);
-  // console.log('[ImageEditorContext] Final CSS Filter String:', trimmedFilterString);
-  if (trimmedFilterString) {
-    ctx.filter = trimmedFilterString;
-  }
+  // ... existing logic ...
+  // This function will need to be replaced with WebGL shader logic
+  console.warn("applyCssFiltersToContext is a 2D Canvas function and will not work with WebGL.");
 };
+*/
 
+const NOISE_CANVAS_SIZE = 250;
 
-const TINT_EFFECT_SCALING_FACTOR = 0.6; 
-const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
-const NOISE_CANVAS_SIZE = 250; 
-
+// drawImageWithSettingsToContext is temporarily disabled/modified for WebGL transition
 export const drawImageWithSettingsToContext = (
-  _ctx: CanvasRenderingContext2D,
+  _ctx: CanvasRenderingContext2D, // This will be unused in WebGL context for export
   imageToDraw: HTMLImageElement,
   imageSettings: ImageSettings,
   targetCanvasWidth: number, 
   targetCanvasHeight: number, 
   noiseImageData: ImageData | null 
 ) => {
-    _ctx.clearRect(0, 0, targetCanvasWidth, targetCanvasHeight);
-    _ctx.save(); 
-
-    const {
-      rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
-      highlights, shadows,
-      colorTemperature,
-      tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation,
-      tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation,
-      vignetteIntensity, grainIntensity
-    } = imageSettings;
-
-    let sWidth = imageToDraw.naturalWidth / cropZoom;
-    let sHeight = imageToDraw.naturalHeight / cropZoom;
-    const maxPanX = Math.max(0, imageToDraw.naturalWidth - sWidth);
-    const maxPanY = Math.max(0, imageToDraw.naturalHeight - sHeight);
-    let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
-    let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
-
-    sWidth = Math.max(1, Math.round(sWidth));
-    sHeight = Math.max(1, Math.round(sHeight));
-    sx = Math.max(0, Math.min(Math.round(sx), imageToDraw.naturalWidth - sWidth));
-    sy = Math.max(0, Math.min(Math.round(sy), imageToDraw.naturalHeight - sHeight));
-
-    _ctx.translate(Math.round(targetCanvasWidth / 2), Math.round(targetCanvasHeight / 2));
-    if (rotation !== 0) _ctx.rotate((rotation * Math.PI) / 180);
-    if (scaleX !== 1 || scaleY !== 1) _ctx.scale(scaleX, scaleY);
-
-    const destDrawWidthForExport = Math.round((rotation === 90 || rotation === 270) ? targetCanvasHeight : targetCanvasWidth);
-    const destDrawHeightForExport = Math.round((rotation === 90 || rotation === 270) ? targetCanvasWidth : targetCanvasHeight);
-
-    _ctx.filter = 'none'; 
-    applyCssFiltersToContext(_ctx, imageSettings);
-
-    _ctx.drawImage(
-      imageToDraw,
-      sx, sy, sWidth, sHeight,
-      Math.round(-destDrawWidthForExport / 2), Math.round(-destDrawHeightForExport / 2), 
-      destDrawWidthForExport, destDrawHeightForExport
-    );
-
-    _ctx.filter = 'none'; 
-
-    const effectRectArgs: [number, number, number, number] = [
-        Math.round(-destDrawWidthForExport / 2),
-        Math.round(-destDrawHeightForExport / 2),
-        destDrawWidthForExport,
-        destDrawHeightForExport
-    ];
-
-    const applyBlendEffect = (
-        ctxForBlend: CanvasRenderingContext2D,
-        rectArgs: [number, number, number, number],
-        color: string,
-        alpha: number,
-        compositeOperation: GlobalCompositeOperation
-      ) => {
-      if (alpha > 0.001) {
-        ctxForBlend.globalCompositeOperation = compositeOperation;
-        ctxForBlend.fillStyle = color;
-        ctxForBlend.globalAlpha = alpha;
-        ctxForBlend.fillRect(...rectArgs);
-        ctxForBlend.globalAlpha = 1.0;
-        ctxForBlend.globalCompositeOperation = 'source-over';
-      }
-    };
-
-    if (Math.abs(shadows) > 0.001) {
-      const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
-      if (shadows > 0) applyBlendEffect(_ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen');
-      else applyBlendEffect(_ctx, effectRectArgs, 'rgb(50,50,50)', shadowAlpha, 'multiply');
-    }
-
-    if (Math.abs(highlights) > 0.001) {
-      const highlightAlpha = Math.abs(highlights) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
-      if (highlights < 0) applyBlendEffect(_ctx, effectRectArgs, 'rgb(128,128,128)', highlightAlpha, 'multiply');
-      else applyBlendEffect(_ctx, effectRectArgs, 'rgb(200,200,200)', highlightAlpha, 'screen');
-    }
-
-    if (Math.abs(colorTemperature) > 0.001) {
-      const temp = colorTemperature / 100;
-      const alpha = Math.abs(temp) * 0.1;
-      const color = temp > 0 ? `rgba(255, 185, 70, ${alpha})` : `rgba(100, 150, 255, ${alpha})`;
-      applyBlendEffect(_ctx, effectRectArgs, color, 1, 'overlay');
-    }
-
-    const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
-      if (intensity > 0.001 && baseColorHex && baseColorHex !== '') {
-        const rgbColor = hexToRgb(baseColorHex);
-        if (rgbColor) {
-          const saturatedRgb = desaturateRgb(rgbColor, saturationFactor);
-          const finalColorHex = rgbToHex(saturatedRgb.r, saturatedRgb.g, saturatedRgb.b);
-          applyBlendEffect(_ctx, effectRectArgs, finalColorHex, intensity * TINT_EFFECT_SCALING_FACTOR, blendMode);
-        }
-      }
-    };
-    applyTintWithSaturation(tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation, 'color-dodge');
-    applyTintWithSaturation(tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation, 'color-burn');
-
-    if (vignetteIntensity > 0.001) {
-      const centerX = 0;
-      const centerY = 0;
-      const radiusX = destDrawWidthForExport / 2;
-      const radiusY = destDrawHeightForExport / 2;
-      const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
-
-      const gradient = _ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
-      gradient.addColorStop(0, `rgba(0,0,0,0)`);
-      gradient.addColorStop(1, `rgba(0,0,0,${vignetteIntensity * 0.7})`);
-      _ctx.fillStyle = gradient;
-      _ctx.fillRect(...effectRectArgs);
-    }
-
-    if (grainIntensity > 0.001 && noiseImageData) {
-        const tempNoisePatternCanvas = document.createElement('canvas');
-        tempNoisePatternCanvas.width = noiseImageData.width > 0 ? noiseImageData.width : NOISE_CANVAS_SIZE; 
-        tempNoisePatternCanvas.height = noiseImageData.height > 0 ? noiseImageData.height : NOISE_CANVAS_SIZE;
-
-        const tempNoiseCtx = tempNoisePatternCanvas.getContext('2d');
-        if (tempNoiseCtx) {
-            tempNoiseCtx.putImageData(noiseImageData, 0, 0);
-            const grainPattern = _ctx.createPattern(tempNoisePatternCanvas, 'repeat');
-            if (grainPattern) {
-                _ctx.fillStyle = grainPattern;
-                _ctx.globalAlpha = grainIntensity * 1.0; 
-                _ctx.globalCompositeOperation = 'overlay';
-                _ctx.fillRect(...effectRectArgs);
-                _ctx.globalAlpha = 1.0; 
-                _ctx.globalCompositeOperation = 'source-over';
-            } else {
-                console.warn("Could not create grain pattern for export/save from ImageData.");
-            }
-        } else {
-          console.warn("Could not get context for temporary noise canvas during export using ImageData.");
-        }
-    }
-    _ctx.restore(); 
+    console.warn("drawImageWithSettingsToContext needs to be reimplemented for WebGL export.");
+    // For now, this function will not produce an image from WebGL
+    // Placeholder for future WebGL offscreen rendering
+    return;
 };
 
 interface ImageEditorContextType {
@@ -404,18 +214,18 @@ interface ImageEditorContextType {
   addImageObject: (imageObject: Omit<ImageObject, 'id' | 'thumbnailDataUrl'>) => void;
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
-  canvasRef: RefObject<HTMLCanvasElement>;
+  canvasRef: RefObject<HTMLCanvasElement>; // Will be used for WebGL
   noiseImageDataRef: RefObject<ImageData | null>; 
   getCanvasDataURL: (type?: string, quality?: number)
-    => string | null;
+    => string | null; // Temporarily disabled
   generateImageDataUrlWithSettings: (imageElement: HTMLImageElement, settings: ImageSettings, type?: string, quality?: number)
-    => Promise<string | null>;
-  isPreviewing: boolean;
+    => Promise<string | null>; // Temporarily disabled
+  isPreviewing: boolean; // Might be less relevant with WebGL immediate mode
   setIsPreviewing: (isPreviewing: boolean) => void;
   copiedSettings: ImageSettings | null;
   copyActiveSettings: () => void;
   pasteSettingsToActiveImage: () => void;
-  applyCssFilters: (ctx: CanvasRenderingContext2D, settings: ImageSettings) => void;
+  // applyCssFilters: (ctx: CanvasRenderingContext2D, settings: ImageSettings) => void; // Temporarily disabled
 }
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
@@ -454,7 +264,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [currentBaseFileName, setCurrentBaseFileName] = useState<string>('retrograin_image');
   const [currentSettings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
 
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false); // May be less used with WebGL
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const noiseImageDataRef = useRef<ImageData | null>(null); 
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
@@ -515,39 +325,10 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [allImages, activeImageId, setActiveImageId]);
 
-  const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality: number = 0.92) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !currentActiveImageElement) return null;
-    
-    const offscreenCanvas = document.createElement('canvas');
-    const imageToDraw = currentActiveImageElement;
-    const settingsToApply = currentSettings;
-
-    let sWidthFull = imageToDraw.naturalWidth / settingsToApply.cropZoom;
-    let sHeightFull = imageToDraw.naturalHeight / settingsToApply.cropZoom;
-
-    let canvasBufferWidthFull, canvasBufferHeightFull;
-    if (settingsToApply.rotation === 90 || settingsToApply.rotation === 270) {
-        canvasBufferWidthFull = sHeightFull;
-        canvasBufferHeightFull = sWidthFull;
-    } else {
-        canvasBufferWidthFull = sWidthFull;
-        canvasBufferHeightFull = sHeightFull;
-    }
-
-    canvasBufferWidthFull = Math.abs(Math.round(canvasBufferWidthFull));
-    canvasBufferHeightFull = Math.abs(Math.round(canvasBufferHeightFull));
-
-    offscreenCanvas.width = Math.max(1, canvasBufferWidthFull);
-    offscreenCanvas.height = Math.max(1, canvasBufferHeightFull);
-
-    const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
-
-    drawImageWithSettingsToContext(ctx, imageToDraw, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
-    return offscreenCanvas.toDataURL(type, quality);
-
-  }, [currentActiveImageElement, currentSettings, noiseImageDataRef]); 
+  const getCanvasDataURL = useCallback(() => { // Temporarily disabled for WebGL
+    console.warn("getCanvasDataURL is temporarily disabled during WebGL upgrade. Export will not work.");
+    return null;
+  }, []); 
 
   const copyActiveSettings = useCallback(() => {
     if (activeImageId) {
@@ -577,41 +358,14 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   }, [activeImageId, copiedSettings, allImages]);
 
   const generateImageDataUrlWithSettings = useCallback(async (
-    imageElement: HTMLImageElement,
-    settingsToApply: ImageSettings,
-    type: string = 'image/jpeg',
-    quality: number = 0.92
-  ): Promise<string | null> => {
-    return new Promise((resolve) => {
-      const offscreenCanvas = document.createElement('canvas');
-      
-      let sWidthFull = imageElement.naturalWidth / settingsToApply.cropZoom;
-      let sHeightFull = imageElement.naturalHeight / settingsToApply.cropZoom;
-
-      let canvasBufferWidthFull, canvasBufferHeightFull;
-      if (settingsToApply.rotation === 90 || settingsToApply.rotation === 270) {
-          canvasBufferWidthFull = sHeightFull;
-          canvasBufferHeightFull = sWidthFull;
-      } else {
-          canvasBufferWidthFull = sWidthFull;
-          canvasBufferHeightFull = sHeightFull;
-      }
-
-      canvasBufferWidthFull = Math.abs(Math.round(canvasBufferWidthFull));
-      canvasBufferHeightFull = Math.abs(Math.round(canvasBufferHeightFull));
-
-      offscreenCanvas.width = Math.max(1, canvasBufferWidthFull); 
-      offscreenCanvas.height = Math.max(1, canvasBufferHeightFull);
-
-      const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) {
-        resolve(null);
-        return;
-      }
-      drawImageWithSettingsToContext(ctx, imageElement, settingsToApply, offscreenCanvas.width, offscreenCanvas.height, noiseImageDataRef.current);
-      resolve(offscreenCanvas.toDataURL(type, quality));
-    });
-  }, [noiseImageDataRef]); 
+    // imageElement: HTMLImageElement, // Temporarily disabled for WebGL
+    // settingsToApply: ImageSettings,
+    // type: string = 'image/jpeg',
+    // quality: number = 0.92
+  ): Promise<string | null> => { // Temporarily disabled for WebGL
+    console.warn("generateImageDataUrlWithSettings is temporarily disabled during WebGL upgrade. ZIP export will not work.");
+    return Promise.resolve(null);
+  }, []); 
 
 
   return (
@@ -635,7 +389,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         copiedSettings,
         copyActiveSettings,
         pasteSettingsToActiveImage,
-        applyCssFilters: applyCssFiltersToContext, 
+        // applyCssFilters: applyCssFiltersToContext, // Temporarily disabled
       }}
     >
       {children}
