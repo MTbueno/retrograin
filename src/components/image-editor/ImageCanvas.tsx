@@ -7,9 +7,10 @@ import { Card } from '@/components/ui/card';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 const PREVIEW_SCALE_FACTOR = 0.5;
-const NOISE_CANVAS_SIZE = 250;
-const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075;
-const TINT_EFFECT_SCALING_FACTOR = 0.6;
+const NOISE_CANVAS_SIZE = 250; 
+const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
+const TINT_EFFECT_SCALING_FACTOR = 0.6; 
+
 
 export function ImageCanvas() {
   const context = useImageEditor();
@@ -19,7 +20,7 @@ export function ImageCanvas() {
     canvasRef,
     isPreviewing,
     noiseImageDataRef,
-    applyCssFilters, // Corrected: was applyCssFiltersToContext
+    applyCssFilters,
   } = context;
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export function ImageCanvas() {
 
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
-
+    
     const {
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
       highlights, shadows,
@@ -122,44 +123,47 @@ export function ImageCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     
+    let effectiveCanvasWidth = canvas.width;
+    let effectiveCanvasHeight = canvas.height;
+
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
+      effectiveCanvasWidth /= PREVIEW_SCALE_FACTOR;
+      effectiveCanvasHeight /= PREVIEW_SCALE_FACTOR;
     }
     
-    const effectiveDrawAreaWidth = canvas.width / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1);
-    const effectiveDrawAreaHeight = canvas.height / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1);
-    const effectiveCenterX = effectiveDrawAreaWidth / 2;
-    const effectiveCenterY = effectiveDrawAreaHeight / 2;
+    const effectiveCenterX = Math.round(effectiveCanvasWidth / 2);
+    const effectiveCenterY = Math.round(effectiveCanvasHeight / 2);
 
-    ctx.translate(Math.round(effectiveCenterX), Math.round(effectiveCenterY));
+    ctx.translate(effectiveCenterX, effectiveCenterY);
     
     if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
     if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
     
-    const destDrawWidthForEffects = Math.round(
-      (rotation === 90 || rotation === 270) ? effectiveDrawAreaHeight : effectiveDrawAreaWidth
+    const destDrawWidthForImage = Math.round(
+      (rotation === 90 || rotation === 270) ? effectiveCanvasHeight : effectiveCanvasWidth
     );
-    const destDrawHeightForEffects = Math.round(
-      (rotation === 90 || rotation === 270) ? effectiveDrawAreaWidth : effectiveDrawAreaHeight
+    const destDrawHeightForImage = Math.round(
+      (rotation === 90 || rotation === 270) ? effectiveCanvasWidth : effectiveCanvasHeight
     );
     
     ctx.filter = 'none'; 
-    applyCssFilters(ctx, settings); // Corrected: was applyCssFiltersToContext
+    applyCssFilters(ctx, settings); 
     
     ctx.drawImage(
       originalImage,
       sx, sy, contentWidth, contentHeight,
-      Math.round(-destDrawWidthForEffects / 2), Math.round(-destDrawHeightForEffects / 2), 
-      destDrawWidthForEffects, destDrawHeightForEffects
+      Math.round(-destDrawWidthForImage / 2), Math.round(-destDrawHeightForImage / 2), 
+      destDrawWidthForImage, destDrawHeightForImage
     );
 
     ctx.filter = 'none'; 
 
     const effectRectArgs: [number, number, number, number] = [ 
-      Math.round(-destDrawWidthForEffects / 2), 
-      Math.round(-destDrawHeightForEffects / 2), 
-      destDrawWidthForEffects, 
-      destDrawHeightForEffects 
+      Math.round(-destDrawWidthForImage / 2), 
+      Math.round(-destDrawHeightForImage / 2), 
+      destDrawWidthForImage, 
+      destDrawHeightForImage 
     ];
     
     const applyBlendEffect = (
@@ -214,8 +218,8 @@ export function ImageCanvas() {
     if (vignetteIntensity > 0.001) {
       const centerX = 0; 
       const centerY = 0;
-      const radiusX = destDrawWidthForEffects / 2;
-      const radiusY = destDrawHeightForEffects / 2;
+      const radiusX = destDrawWidthForImage / 2;
+      const radiusY = destDrawHeightForImage / 2;
       const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
       
       const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
@@ -239,11 +243,10 @@ export function ImageCanvas() {
             if (liveNoisePattern) {
                 ctx.save();
                 ctx.fillStyle = liveNoisePattern;
-                ctx.globalAlpha = grainIntensity * 0.2; // Preview grain opacity
+                ctx.globalAlpha = grainIntensity * (isPreviewing ? 0.2 : 1.0); // Adjusted opacity based on isPreviewing
                 ctx.globalCompositeOperation = 'overlay';
                 ctx.fillRect(...effectRectArgs);
                 ctx.restore(); 
-                // console.log("Grain applied in preview. Intensity:", grainIntensity * 0.2);
             } else {
                 console.warn("Could not create grain pattern for live preview from tempNoiseCanvas:", tempNoiseCanvas);
             }
@@ -251,7 +254,7 @@ export function ImageCanvas() {
             console.warn("Could not get context for temporary noise canvas for preview.");
         }
     } else if (grainIntensity > 0.001 && !currentNoiseImageData) {
-      // console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
+       console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
     }
 
     ctx.restore();
@@ -264,7 +267,7 @@ export function ImageCanvas() {
       
       let timeoutId: NodeJS.Timeout | null = null;
       
-      const debouncedFunction = (...args: any[]) => {
+      const debouncedFunction = () => { // Removed ...args
         if (timeoutId !== null) {
           clearTimeout(timeoutId);
         }
