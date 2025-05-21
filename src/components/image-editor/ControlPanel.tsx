@@ -11,14 +11,17 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { FileUploadSection } from './FileUploadSection';
-import { AdjustmentsSection } from './AdjustmentsSection';
+import { BasicAdjustmentsSection } from './BasicAdjustmentsSection';
+import { ColorSettingsSection } from './ColorSettingsSection';
+import { TintSettingsSection } from './TintSettingsSection';
+import { EffectSettingsSection } from './EffectSettingsSection';
 import { TransformsSection } from './TransformsSection';
-import { FiltersSection } from './FiltersSection'; // Restored
+import { FiltersSection } from './FiltersSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const APP_VERSION = "alpha 0.1n"; // Updated version
+const APP_VERSION = "alpha 0.1o"; 
 
 export function ControlPanel() {
 
@@ -35,11 +38,17 @@ export function ControlPanel() {
           <SidebarMenu className="p-4 space-y-6">
             <FileUploadSection />
             <SidebarSeparator />
-            <AdjustmentsSection />
+            <BasicAdjustmentsSection />
+            <SidebarSeparator />
+            <ColorSettingsSection />
+            <SidebarSeparator />
+            <TintSettingsSection />
+            <SidebarSeparator />
+            <EffectSettingsSection />
             <SidebarSeparator />
             <TransformsSection />
-            <SidebarSeparator /> {/* Restored */}
-            <FiltersSection /> {/* Restored */}
+            <SidebarSeparator />
+            <FiltersSection />
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
@@ -51,5 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    
