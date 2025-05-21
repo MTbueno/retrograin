@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 const PREVIEW_SCALE_FACTOR = 0.5;
-const NOISE_CANVAS_SIZE = 250; // Aumentado para reduzir tiling
+const NOISE_CANVAS_SIZE = 250;
 const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075;
 const TINT_EFFECT_SCALING_FACTOR = 0.6;
 
@@ -24,37 +24,56 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
 }
 
 export function ImageCanvas() {
+  const context = useImageEditor();
   const {
     originalImage,
     settings,
     canvasRef,
     isPreviewing,
-    noiseImageDataRef, // Agora espera ImageData
-    applyCssFilters,
-  } = useImageEditor();
+    noiseImageDataRef,
+    applyCssFiltersToContext,
+  } = context;
 
   useEffect(() => {
-    // Cria o ImageData do ruído uma vez e armazena no contexto
-    if (typeof window !== 'undefined' && canvasRef.current && !noiseImageDataRef.current) {
-      const noiseCv = document.createElement('canvas');
-      noiseCv.width = NOISE_CANVAS_SIZE;
-      noiseCv.height = NOISE_CANVAS_SIZE;
-      const noiseCtx = noiseCv.getContext('2d', { willReadFrequently: true });
-      if (noiseCtx) {
-        const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
+    // Creates the noise ImageData once and stores it in the context ref
+    if (typeof window !== 'undefined' && !noiseImageDataRef.current) {
+      try {
+        // ImageData constructor is preferred if available and suits the need for raw pixel data
+        const imageData = new ImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
           const rand = Math.floor(Math.random() * 256);
-          data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255;
+          data[i] = rand;
+          data[i + 1] = rand;
+          data[i + 2] = rand;
+          data[i + 3] = 255; // Alpha
         }
-        noiseCtx.putImageData(imageData, 0, 0);
-        noiseImageDataRef.current = noiseCtx.getImageData(0, 0, NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
-        console.log("Noise ImageData (", NOISE_CANVAS_SIZE, "x", NOISE_CANVAS_SIZE, ") created and stored in context ref.");
-      } else {
-        console.warn("Could not get 2D context for noise canvas generation.");
+        noiseImageDataRef.current = imageData;
+        console.log(`SUCCESS: Noise ImageData (${NOISE_CANVAS_SIZE}x${NOISE_CANVAS_SIZE}) created and stored in context ref.`);
+      } catch (e) {
+         // Fallback for environments where ImageData constructor might not be ideal/available without a context
+         // This path is less likely for modern browsers but provides a fallback.
+        console.warn("ImageData constructor failed, trying with temporary canvas for noise.", e);
+        const tempCanvasForNoise = document.createElement('canvas');
+        tempCanvasForNoise.width = NOISE_CANVAS_SIZE;
+        tempCanvasForNoise.height = NOISE_CANVAS_SIZE;
+        const noiseCtx = tempCanvasForNoise.getContext('2d', { willReadFrequently: true });
+        if (noiseCtx) {
+          const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const rand = Math.floor(Math.random() * 256);
+            data[i] = rand; data[i + 1] = rand; data[i + 2] = rand; data[i + 3] = 255;
+          }
+          noiseCtx.putImageData(imageData,0,0); // Draw it to get it from the context if needed
+          noiseImageDataRef.current = noiseCtx.getImageData(0,0,NOISE_CANVAS_SIZE,NOISE_CANVAS_SIZE);
+          console.log(`SUCCESS (fallback): Noise ImageData (${NOISE_CANVAS_SIZE}x${NOISE_CANVAS_SIZE}) created via temp canvas and stored.`);
+        } else {
+            console.error("FAILURE: Could not get 2D context for noise ImageData generation via fallback.");
+        }
       }
     }
-  }, [canvasRef, noiseImageDataRef]);
+  }, [noiseImageDataRef]);
 
 
   const drawImageImmediately = useCallback(() => {
@@ -66,6 +85,7 @@ export function ImageCanvas() {
 
     const {
       rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
+      highlights, shadows,
       colorTemperature,
       tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation,
       tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation,
@@ -112,21 +132,16 @@ export function ImageCanvas() {
         canvasPhysicalHeight = MAX_PHYSICAL_HEIGHT_CAP;
     }
     
-    // Definir as dimensões do buffer do canvas. Estas NÃO mudam com isPreviewing.
     canvas.width = Math.round(canvasPhysicalWidth);
     canvas.height = Math.round(canvasPhysicalHeight);
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-
-    // Aplicar escala de PREVIEW INTERNAMENTE no contexto, se necessário
+    
     if (isPreviewing) {
       ctx.scale(PREVIEW_SCALE_FACTOR, PREVIEW_SCALE_FACTOR);
     }
     
-    // Calcular o centro e as dimensões de desenho EFETIVAS após a escala de preview.
-    // O "espaço de desenho" é o tamanho do buffer do canvas (canvas.width/height)
-    // dividido pelo fator de escala do preview, se aplicável.
     const effectiveDrawAreaWidth = canvas.width / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1);
     const effectiveDrawAreaHeight = canvas.height / (isPreviewing ? PREVIEW_SCALE_FACTOR : 1);
     const effectiveCenterX = effectiveDrawAreaWidth / 2;
@@ -137,7 +152,6 @@ export function ImageCanvas() {
     if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
     if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
     
-    // Dimensões de desenho da imagem para preencher a área efetiva.
     const destDrawWidthForEffects = Math.round(
       (rotation === 90 || rotation === 270) ? effectiveDrawAreaHeight : effectiveDrawAreaWidth
     );
@@ -146,7 +160,7 @@ export function ImageCanvas() {
     );
     
     ctx.filter = 'none'; 
-    applyCssFilters(ctx, settings); 
+    applyCssFiltersToContext(ctx, settings); 
     
     ctx.drawImage(
       originalImage,
@@ -164,7 +178,6 @@ export function ImageCanvas() {
       destDrawHeightForEffects 
     ];
     
-    const { highlights, shadows } = settings;
     const applyBlendEffect = (
         ctxForBlend: CanvasRenderingContext2D,
         rectArgs: [number, number, number, number],
@@ -231,26 +244,23 @@ export function ImageCanvas() {
     const currentNoiseImageData = noiseImageDataRef.current;
     if (grainIntensity > 0.001 && currentNoiseImageData) {
         const tempNoiseCanvas = document.createElement('canvas');
-        // O canvas temporário para o padrão sempre usa as dimensões do ImageData
         tempNoiseCanvas.width = currentNoiseImageData.width; 
         tempNoiseCanvas.height = currentNoiseImageData.height;
         const tempNoiseCtx = tempNoiseCanvas.getContext('2d');
 
         if (tempNoiseCtx) {
             tempNoiseCtx.putImageData(currentNoiseImageData, 0, 0);
-            // O createPattern usa o contexto do canvas principal (ctx),
-            // que já está escalado se isPreviewing for true.
-            // Isso fará com que o padrão pareça mais fino no preview.
             const liveNoisePattern = ctx.createPattern(tempNoiseCanvas, 'repeat'); 
             if (liveNoisePattern) {
                 ctx.save();
                 ctx.fillStyle = liveNoisePattern;
-                ctx.globalAlpha = grainIntensity * (isPreviewing ? 0.2 : 1.0); 
+                ctx.globalAlpha = grainIntensity * 0.2; 
                 ctx.globalCompositeOperation = 'overlay';
                 ctx.fillRect(...effectRectArgs);
                 ctx.restore(); 
+                console.log("Grain applied in preview. Intensity:", grainIntensity * 0.2, "Pattern:", liveNoisePattern);
             } else {
-                console.warn("Could not create grain pattern for live preview.");
+                console.warn("Could not create grain pattern for live preview from tempNoiseCanvas:", tempNoiseCanvas);
             }
         } else {
             console.warn("Could not get context for temporary noise canvas for preview.");
@@ -259,8 +269,8 @@ export function ImageCanvas() {
       console.warn("Grain effect active, but noiseImageDataRef.current is null or undefined for live preview.");
     }
 
-    ctx.restore(); // Restaura o save() do início que pode ter a escala de preview
-  }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFilters]);
+    ctx.restore();
+  }, [originalImage, settings, canvasRef, isPreviewing, noiseImageDataRef, applyCssFiltersToContext]);
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 150),
@@ -304,4 +314,6 @@ export function ImageCanvas() {
   );
 }
     
+    
+
     

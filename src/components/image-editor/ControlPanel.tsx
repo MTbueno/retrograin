@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.2m"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.2o"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -26,9 +26,7 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    // Define a constante aqui para que seja usada apenas no cliente
-    const versionString = "alpha 0.2m"; 
-    setAppVersion(versionString);
+    setAppVersion(CURRENT_PROJECT_VERSION);
   }, []);
 
   return (
@@ -64,4 +62,6 @@ export function ControlPanel() {
 }
 
     
+    
+
     
