@@ -4,7 +4,7 @@
 import type { User } from 'firebase/auth';
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, googleProvider, signOut, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from '@/lib/firebase';
+import { auth, googleProvider, signOut, signInWithRedirect, getRedirectResult, onAuthStateChanged } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
@@ -22,17 +22,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
-    // This effect runs once on mount to handle initial auth state and redirect results
-    setLoading(true);
+    setLoading(true); // Ensure loading is true while checking auth state
 
     getRedirectResult(auth)
       .then((result) => {
         if (result && result.user) {
           // User signed in via redirect.
-          // onAuthStateChanged will also fire, this is more for an immediate toast or specific redirect handling.
-          toast({ title: 'Logged In!', description: 'Successfully signed in with Google via redirect.' });
+          // onAuthStateChanged will also fire, this is more for an immediate toast.
+          toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
         }
-        // setLoading(false) will be handled by onAuthStateChanged
+        // Do not setLoading(false) here; onAuthStateChanged will handle it.
       })
       .catch((error) => {
         console.error("Error processing redirect result:", error);
@@ -42,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             error.code !== 'auth/no-redirect-operation') {
           toast({ title: 'Login Error', description: error.message || 'Failed to process sign-in after redirect.', variant: 'destructive' });
         }
-        // setLoading(false) will be handled by onAuthStateChanged
+        // Do not setLoading(false) here; onAuthStateChanged will handle it.
       });
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -56,39 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     setLoading(true);
     try {
-      let isPwaMode = false;
-      if (typeof window !== 'undefined') {
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-        const isMinimalUi = window.matchMedia('(display-mode: minimal-ui)').matches;
-        // navigator.standalone is a non-standard property, primarily for older iOS Safari PWAs, but worth checking.
-        const navigatorStandalone = (window.navigator as any)?.standalone === true;
-        isPwaMode = isStandalone || isMinimalUi || navigatorStandalone;
-      }
-
-      if (isPwaMode) {
-        // For PWA, use redirect method
-        await signInWithRedirect(auth, googleProvider);
-        // Redirect will occur. setLoading(false) will happen when onAuthStateChanged resolves after redirect.
-      } else {
-        // For regular browser tabs, use popup method
-        await signInWithPopup(auth, googleProvider);
-        // For popup, success means onAuthStateChanged will eventually fire and set user/loading.
-        // We can show an immediate toast here.
-        toast({ title: 'Logged In!', description: 'Successfully signed in with Google.' });
-        // setLoading(false) will be handled by onAuthStateChanged
-      }
+      // Always use redirect for PWA/Nativefier consistency
+      await signInWithRedirect(auth, googleProvider);
+      // Redirect will occur. setLoading(false) will happen when onAuthStateChanged resolves after redirect.
     } catch (error: any) {
-      console.error("Error signing in: ", error);
-      let description = error.message || 'Could not sign in with Google.';
-      if (error.code === 'auth/popup-blocked') {
-        description = "The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site.";
-      }
+      console.error("Error initiating Google sign-in redirect: ", error);
       toast({
-        title: 'Login Failed',
-        description,
+        title: 'Login Initiation Failed',
+        description: error.message || 'Could not start Google sign-in process.',
         variant: 'destructive',
       });
-      setLoading(false); // Set loading to false ONLY on a caught error here (e.g. popup blocked before Firebase takes over)
+      setLoading(false); // Set loading to false if redirect initiation itself fails
     }
   };
 
