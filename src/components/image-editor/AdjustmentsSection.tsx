@@ -4,7 +4,7 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, /* Palette, */ CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Minus, Plus } from 'lucide-react';
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline } from 'lucide-react'; // Added Palette
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
@@ -15,7 +15,7 @@ export function AdjustmentsSection() {
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'exposure' | 
           'highlights' | 'shadows' | 'blacks' | 
-          // 'hueRotate' | // Removed
+          'hueRotate' | // Restored
           'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 
           'tintShadowsIntensity' | 'tintShadowsSaturation' |
@@ -46,9 +46,9 @@ export function AdjustmentsSection() {
       case 'blacks':
         dispatchSettings({ type: 'SET_BLACKS', payload: value });
         break;
-      // case 'hueRotate': // Removed
-      //   dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
-      //   break;
+      case 'hueRotate': // Restored
+        dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
+        break;
       case 'vignetteIntensity':
         dispatchSettings({ type: 'SET_VIGNETTE_INTENSITY', payload: value });
         break;
@@ -88,13 +88,13 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    if (originalImage) setIsPreviewing(false);
+    if (originalImage) setIsPreviewing(false); // Use false after color selection for full render
   };
   
   const generalAdjustments = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 1, step: 0.01 }, // Range 0-1 for desaturation
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 }, // Max 2 for saturation
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
     { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
@@ -102,7 +102,7 @@ export function AdjustmentsSection() {
   ];
 
   const colorAdjustments = [
-    // { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 }, // Removed
+    { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 }, // Restored
     { id: 'colorTemperature', label: 'Temperature', icon: Thermometer, value: settings.colorTemperature, min: -100, max: 100, step: 1 },
   ];
   
@@ -120,7 +120,7 @@ export function AdjustmentsSection() {
         </Label>
         <span className="text-xs text-muted-foreground">
           {control.id === 'exposure' ? control.value.toFixed(2) :
-           // control.id === 'hueRotate' ? `${Math.round(control.value)}°` : // Removed
+           control.id === 'hueRotate' ? `${Math.round(control.value)}°` : // Restored
            control.id === 'highlights' || control.id === 'shadows' || control.id === 'blacks' ? `${Math.round(control.value * 100)}` :
            isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || control.id === 'saturation' ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
@@ -134,6 +134,7 @@ export function AdjustmentsSection() {
         step={control.step}
         value={[control.value]}
         onValueChange={(val) => {
+          if (originalImage) setIsPreviewing(true); // Ensure preview is true during change
           handleSliderChange(control.id as any, val[0]);
         }}
         disabled={!originalImage}
