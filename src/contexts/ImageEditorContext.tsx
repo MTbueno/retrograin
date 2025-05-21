@@ -9,12 +9,12 @@ export interface ImageSettings {
   brightness: number;
   contrast: number;
   saturation: number;
-  vibrance: number; // Added vibrance
+  vibrance: number;
   exposure: number;
   highlights: number;
   shadows: number;
   blacks: number;
-  hueRotate: number;
+  // hueRotate: number; // Removed as it's not working well on Safari with ctx.filter
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
@@ -30,19 +30,19 @@ export interface ImageSettings {
   cropZoom: number;
   cropOffsetX: number;
   cropOffsetY: number;
-  filter: string | null;
+  filter: string | null; // For preset filters like grayscale, sepia
 }
 
 export const initialImageSettings: ImageSettings = {
   brightness: 1,
   contrast: 1,
   saturation: 1,
-  vibrance: 0, // Initial vibrance
+  vibrance: 0,
   exposure: 0,
   highlights: 0,
   shadows: 0,
   blacks: 0,
-  hueRotate: 0,
+  // hueRotate: 0, // Removed
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
@@ -67,18 +67,19 @@ export interface ImageObject {
   baseFileName: string;
   settings: ImageSettings;
   thumbnailDataUrl: string;
+  exifData: string | null; // To store EXIF data as a base64 string
 }
 
 export type SettingsAction =
   | { type: 'SET_BRIGHTNESS'; payload: number }
   | { type: 'SET_CONTRAST'; payload: number }
   | { type: 'SET_SATURATION'; payload: number }
-  | { type: 'SET_VIBRANCE'; payload: number } // Added vibrance action
+  | { type: 'SET_VIBRANCE'; payload: number }
   | { type: 'SET_EXPOSURE'; payload: number }
   | { type: 'SET_HIGHLIGHTS'; payload: number }
   | { type: 'SET_SHADOWS'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
-  | { type: 'SET_HUE_ROTATE'; payload: number }
+  // | { type: 'SET_HUE_ROTATE'; payload: number } // Removed
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -118,8 +119,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, shadows: action.payload };
     case 'SET_BLACKS':
       return { ...state, blacks: action.payload };
-    case 'SET_HUE_ROTATE':
-      return { ...state, hueRotate: action.payload };
+    // case 'SET_HUE_ROTATE': // Removed
+    //   return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -131,13 +132,13 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
     case 'SET_TINT_SHADOWS_INTENSITY':
       return { ...state, tintShadowsIntensity: action.payload };
     case 'SET_TINT_SHADOWS_SATURATION':
-      return { ...state, tintShadowsSaturation: action.payload };
+        return { ...state, tintShadowsSaturation: action.payload };
     case 'SET_TINT_HIGHLIGHTS_COLOR':
       return { ...state, tintHighlightsColor: action.payload };
     case 'SET_TINT_HIGHLIGHTS_INTENSITY':
       return { ...state, tintHighlightsIntensity: action.payload };
     case 'SET_TINT_HIGHLIGHTS_SATURATION':
-      return { ...state, tintHighlightsSaturation: action.payload };
+        return { ...state, tintHighlightsSaturation: action.payload };
     case 'ROTATE_CW':
       return { ...state, rotation: (state.rotation + 90) % 360 };
     case 'ROTATE_CCW':
@@ -165,13 +166,12 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
   }
 }
 
-// Moved here for use in both context and ImageCanvas (though ImageCanvas will get it from context now)
 const applyCssFiltersToContextInternal = (ctx: CanvasRenderingContext2D, settings: ImageSettings) => {
   ctx.filter = 'none'; 
   const filters: string[] = [];
 
   let finalBrightness = settings.brightness + settings.exposure;
-  let finalContrastValue = settings.contrast; // Renamed to avoid conflict
+  let finalContrastValue = settings.contrast;
   
   if (settings.blacks !== 0) {
     finalBrightness += settings.blacks * 0.05; 
@@ -189,11 +189,10 @@ const applyCssFiltersToContextInternal = (ctx: CanvasRenderingContext2D, setting
   calculatedSaturation = Math.max(0, Math.min(3, calculatedSaturation)); 
   finalContrastValue = Math.max(0, Math.min(3, finalContrastValue));
 
-
   if (Math.abs(finalBrightness - 1) > 0.001 || settings.exposure !==0 || settings.blacks !==0 ) filters.push(`brightness(${finalBrightness * 100}%)`);
-  if (Math.abs(finalContrastValue - 1) > 0.001 || settings.blacks !==0 || settings.vibrance > 0) filters.push(`contrast(${finalContrastValue * 100}%)`);
+  if (Math.abs(finalContrastValue - 1) > 0.001 || settings.blacks !==0 || settings.vibrance !== 0) filters.push(`contrast(${finalContrastValue * 100}%)`);
   if (Math.abs(calculatedSaturation - 1) > 0.001 || settings.vibrance !== 0) filters.push(`saturate(${calculatedSaturation * 100}%)`);
-  if (settings.hueRotate !== 0) filters.push(`hue-rotate(${settings.hueRotate}deg)`);
+  // if (settings.hueRotate !== 0) filters.push(`hue-rotate(${settings.hueRotate}deg)`); // Hue rotate removed
   if (settings.filter) filters.push(settings.filter);
   
   const trimmedFilterString = filters.join(' ').trim();
@@ -201,7 +200,6 @@ const applyCssFiltersToContextInternal = (ctx: CanvasRenderingContext2D, setting
     ctx.filter = trimmedFilterString;
   }
 };
-
 
 const drawImageWithSettingsToContext = (
   ctx: CanvasRenderingContext2D,
@@ -276,7 +274,7 @@ const drawImageWithSettingsToContext = (
       }
     };
     
-    const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.175 * 0.25 * 0.5 * 0.5; 
+    const SHADOW_HIGHLIGHT_ALPHA_FACTOR = 0.075; 
     if (Math.abs(shadows) > 0.001) {
       const shadowAlpha = Math.abs(shadows) * SHADOW_HIGHLIGHT_ALPHA_FACTOR;
       if (shadows > 0) applyBlendEffect(ctx, effectRectArgs, 'rgb(128,128,128)', shadowAlpha, 'screen');
@@ -296,7 +294,7 @@ const drawImageWithSettingsToContext = (
       applyBlendEffect(ctx, effectRectArgs, color, 1, 'overlay');
     }
 
-    const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6 * 0.5; 
+    const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6; 
     const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
       if (intensity > 0.001 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') {
         const rgbColor = hexToRgb(baseColorHex);
@@ -335,7 +333,6 @@ const drawImageWithSettingsToContext = (
     ctx.restore(); 
 };
 
-
 interface ImageEditorContextType {
   originalImage: HTMLImageElement | null;
   settings: ImageSettings;
@@ -343,7 +340,7 @@ interface ImageEditorContextType {
   baseFileName: string;
   allImages: ImageObject[];
   activeImageId: string | null;
-  addImageObject: (imageObject: Omit<ImageObject, 'id' | 'thumbnailDataUrl'>) => void;
+  addImageObject: (imageObject: Omit<ImageObject, 'id' | 'thumbnailDataUrl'> & { exifData?: string | null }) => void;
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
   canvasRef: RefObject<HTMLCanvasElement>;
@@ -357,7 +354,7 @@ interface ImageEditorContextType {
   copiedSettings: ImageSettings | null;
   copyActiveSettings: () => void;
   pasteSettingsToActiveImage: () => void;
-  applyCssFilters: (ctx: CanvasRenderingContext2D, settings: ImageSettings) => void; // Expose applyCssFilters
+  applyCssFilters: (ctx: CanvasRenderingContext2D, settings: ImageSettings) => void;
 }
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
@@ -388,7 +385,6 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
   return thumbCanvas.toDataURL('image/jpeg', 0.8);
 };
 
-
 export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [allImages, setAllImages] = useState<ImageObject[]>([]);
   const [activeImageId, setActiveImageIdInternal] = useState<string | null>(null);
@@ -410,14 +406,16 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [currentSettings, activeImageId]);
 
-  const addImageObject = useCallback((imageData: Omit<ImageObject, 'id' | 'thumbnailDataUrl'>) => {
+  const addImageObject = useCallback((imageData: Omit<ImageObject, 'id' | 'thumbnailDataUrl'> & { exifData?: string | null }) => {
     const newId = Date.now().toString() + Math.random().toString(36).substring(2, 15);
     const thumbnailDataUrl = generateThumbnail(imageData.imageElement);
     const newImageObject: ImageObject = {
-      ...imageData,
+      imageElement: imageData.imageElement,
+      baseFileName: imageData.baseFileName,
+      settings: { ...initialImageSettings, ...(imageData.settings || {}) },
+      exifData: imageData.exifData || null,
       id: newId,
       thumbnailDataUrl,
-      settings: { ...initialImageSettings } 
     };
     setAllImages(prev => [...prev, newImageObject]);
     setActiveImageIdInternal(newId); 
@@ -474,6 +472,11 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         canvasBufferWidthFull = sWidthFull;
         canvasBufferHeightFull = sHeightFull;
     }
+
+    // Apply scaleX/Y (flips) to dimensions for offscreen canvas *only if* they represent a 180 deg rotation equivalent for aspect ratio
+    // This logic was slightly off before. Flips (scaleX/Y = -1) don't change the required buffer dimensions.
+    // The rotation (90/270) is what swaps width/height.
+    
     offscreenCanvas.width = Math.max(1, Math.round(canvasBufferWidthFull));
     offscreenCanvas.height = Math.max(1, Math.round(canvasBufferHeightFull));
     
@@ -520,6 +523,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
           canvasBufferWidthFull = sWidthFull;
           canvasBufferHeightFull = sHeightFull;
       }
+      
       offscreenCanvas.width = Math.max(1, Math.round(canvasBufferWidthFull));
       offscreenCanvas.height = Math.max(1, Math.round(canvasBufferHeightFull));
 
@@ -555,7 +559,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         copiedSettings,
         copyActiveSettings,
         pasteSettingsToActiveImage,
-        applyCssFilters: applyCssFiltersToContextInternal, // Expose the renamed internal function
+        applyCssFilters: applyCssFiltersToContextInternal,
       }}
     >
       {children}
@@ -570,5 +574,3 @@ export function useImageEditor() {
   }
   return context;
 }
-
-    

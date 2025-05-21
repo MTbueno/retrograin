@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from 'react';
@@ -17,11 +18,16 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
+const APP_VERSION = "20250521-082030"; // Timestamp version
+
 export function ControlPanel() {
   return (
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">
         <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
+        <p className="text-xs text-muted-foreground text-center mt-1">
+          Versão: {APP_VERSION}
+        </p>
       </SidebarHeader>
       <SidebarContent asChild>
         <ScrollArea className="h-full">

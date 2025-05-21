@@ -1,13 +1,14 @@
 
 "use client";
 
-import { useImageEditor, type ImageObject } from '@/contexts/ImageEditorContext';
+import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
 import { Download, RotateCcwSquare, Copy, ClipboardPaste, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import piexif from 'piexifjs'; // Correct import
 import {
   loadGapi,
   initTokenClient,
@@ -19,26 +20,26 @@ import {
 } from '@/lib/googleDrive';
 
 const JPEG_QUALITY = 0.92;
-// Versão: 20250521-082030
 
 export function ActionButtonsSection() {
   const {
     originalImage,
     allImages,
     dispatchSettings,
-    baseFileName, // This is for the currently active image
-    getCanvasDataURL, // For the currently active image's canvas
-    generateImageDataUrlWithSettings, // For generating specific image data URLs
+    baseFileName, 
+    getCanvasDataURL, 
+    generateImageDataUrlWithSettings,
     setIsPreviewing,
     copyActiveSettings,
     pasteSettingsToActiveImage,
-    copiedSettings
+    copiedSettings,
+    activeImageId, // Added to get exifData for the active image
   } = useImageEditor();
   const { toast } = useToast();
   const { user: firebaseUser } = useAuth();
 
   const [isGapiClientInitialized, setIsGapiClientInitialized] = useState(false);
-  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false); // Indicates GAPI and GIS client are ready
+  const [isDriveSdkReady, setIsDriveSdkReady] = useState(false);
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
   const [isConnectingOrSavingToDrive, setIsConnectingOrSavingToDrive] = useState(false);
 
@@ -46,8 +47,10 @@ export function ActionButtonsSection() {
     setIsConnectingOrSavingToDrive(false); 
 
     if (tokenResponse && tokenResponse.access_token) {
-      window.gapi.client.setToken({ access_token: tokenResponse.access_token });
-      setTimeout(() => {
+      if (window.gapi && window.gapi.client) {
+        window.gapi.client.setToken({ access_token: tokenResponse.access_token });
+      }
+      setTimeout(() => { // Allow gapi to process the token
         if (isDriveAuthenticated()) {
           setIsDriveAuthorized(true);
           toast({ title: 'Google Drive Conectado!', description: 'Agora você pode salvar imagens no Drive.' });
@@ -56,7 +59,7 @@ export function ActionButtonsSection() {
           console.error("Token do Drive recebido, mas isDriveAuthenticated() ainda é falso.");
           toast({ title: 'Falha na Conexão', description: 'Erro ao verificar a conexão com o Drive após autorização.', variant: 'destructive' });
         }
-      }, 500); // Short delay
+      }, 500); 
     } else {
       setIsDriveAuthorized(false);
       const errorDescription = (tokenResponse as any)?.error_description || "Falha ao obter token de acesso do Google Drive.";
@@ -65,50 +68,46 @@ export function ActionButtonsSection() {
       toast({ title: 'Falha na Conexão com Drive', description: `${errorDescription} (Erro: ${errorCode || 'desconhecido'})`, variant: 'destructive' });
     }
   }, [toast]);
-
+  
   useEffect(() => {
-    let gapiLoadAttempts = 0;
-    const maxGapiLoadAttempts = 20; 
-
-    const attemptGapiLoad = () => {
+    let gapiAttempts = 0;
+    const tryLoadGapi = () => {
       if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
-        loadGapi((gapiClientSuccess) => {
-          setIsGapiClientInitialized(gapiClientSuccess);
-          if (gapiClientSuccess) {
-            // GAPI client is ready, now check/wait for GIS
-            let gisLoadAttempts = 0;
-            const maxGisLoadAttempts = 20;
-            const gisIntervalId = setInterval(() => {
-              gisLoadAttempts++;
+        loadGapi((gapiSuccess) => {
+          setIsGapiClientInitialized(gapiSuccess);
+          if (gapiSuccess) {
+            // Now try to init GIS and token client
+            let gisAttempts = 0;
+            const tryInitGis = () => {
               if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
-                clearInterval(gisIntervalId);
-                const tokenClientInitialized = initTokenClient(handleTokenResponse);
-                setIsDriveSdkReady(tokenClientInitialized); // GIS and tokenClient are ready
-                if (tokenClientInitialized && isDriveAuthenticated()) {
+                const tokenClientSuccess = initTokenClient(handleTokenResponse);
+                setIsDriveSdkReady(tokenClientSuccess);
+                if (tokenClientSuccess && isDriveAuthenticated()) {
                   setIsDriveAuthorized(true);
                 }
-              } else if (gisLoadAttempts >= maxGisLoadAttempts) {
-                clearInterval(gisIntervalId);
-                console.error("GIS (Google Identity Services) did not load in time.");
-                setIsDriveSdkReady(false); // GIS failed to load
+              } else if (gisAttempts < 20) { // Retry for GIS
+                gisAttempts++;
+                setTimeout(tryInitGis, 500);
+              } else {
+                console.error("GIS (Google Identity Services) not loaded in time.");
+                setIsDriveSdkReady(false);
               }
-            }, 500);
+            };
+            tryInitGis();
           } else {
             setIsDriveSdkReady(false); // GAPI client.init failed
           }
         });
+      } else if (gapiAttempts < 20) { // Retry for GAPI script
+        gapiAttempts++;
+        setTimeout(tryLoadGapi, 500);
       } else {
-        gapiLoadAttempts++;
-        if (gapiLoadAttempts < maxGapiLoadAttempts) {
-          setTimeout(attemptGapiLoad, 500);
-        } else {
-          console.error("GAPI script (api.js) did not load in time.");
-          setIsGapiClientInitialized(false);
-          setIsDriveSdkReady(false); // GAPI script failed to load
-        }
+        console.error("GAPI script (api.js) not loaded in time.");
+        setIsGapiClientInitialized(false);
+        setIsDriveSdkReady(false);
       }
     };
-    attemptGapiLoad();
+    tryLoadGapi();
   }, [handleTokenResponse]);
 
 
@@ -117,8 +116,8 @@ export function ActionButtonsSection() {
       toast({ title: 'Não Logado', description: 'Por favor, faça login para usar o Google Drive.', variant: 'default' });
       return;
     }
-    if (!isGapiClientInitialized || !isDriveSdkReady) { // Check both GAPI and GIS readiness
-      toast({ title: 'SDK do Drive não está pronto', description: 'Aguarde um momento e tente novamente. Verifique o console para erros de API do Google.', variant: 'default' });
+    if (!isGapiClientInitialized || !isDriveSdkReady) {
+      toast({ title: 'SDK do Drive não está pronto', description: 'Aguarde um momento e tente novamente. Verifique o console para erros.', variant: 'default' });
       return;
     }
 
@@ -126,13 +125,10 @@ export function ActionButtonsSection() {
       setIsConnectingOrSavingToDrive(true);
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
       requestAccessToken();
-      // handleTokenResponse will be called by initTokenClient's callback
     } else {
-      // If already authenticated, and user clicks "Save to Drive"
       saveToDrive();
     }
   };
-
 
   const saveToDrive = async () => {
     if (!originalImage) { 
@@ -146,7 +142,18 @@ export function ActionButtonsSection() {
     try {
       const folderId = await ensureRetroGrainFolder();
       if (folderId) {
-        const currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY); 
+        let currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY); 
+        const activeImgObject = allImages.find(img => img.id === activeImageId);
+
+        if (currentImageURI && activeImgObject && activeImgObject.exifData) {
+            try {
+                currentImageURI = piexif.insert(activeImgObject.exifData, currentImageURI);
+            } catch (exifError) {
+                console.warn("Could not insert EXIF data for Drive upload:", exifError);
+                toast({ title: 'Aviso EXIF', description: 'Não foi possível reanexar dados EXIF à imagem do Drive.', variant: 'default' });
+            }
+        }
+        
         if (currentImageURI) {
           const savedFile = await uploadFileToDrive(folderId, `${baseFileName}_retrograin`, currentImageURI);
           if (savedFile && savedFile.id) {
@@ -202,13 +209,22 @@ export function ActionButtonsSection() {
     toast({ title: 'Ajustes Colados!', description: 'Os ajustes foram aplicados à imagem atual.' });
   };
 
-  const handleDownload = async () => {
+  const handleDownloadInternal = async () => { // Renamed to avoid conflict with global handleDownload if any
     if (allImages.length === 0) return;
-    setIsPreviewing(false); // Ensure full quality for download
+    setIsPreviewing(false); 
 
-    if (allImages.length === 1 && originalImage) {
-      // Download single active image
-      const dataURL = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
+    if (allImages.length === 1 && originalImage && activeImageId) {
+      const activeImgObject = allImages.find(img => img.id === activeImageId);
+      let dataURL = getCanvasDataURL('image/jpeg', JPEG_QUALITY);
+      if (dataURL && activeImgObject && activeImgObject.exifData) {
+        try {
+          dataURL = piexif.insert(activeImgObject.exifData, dataURL);
+        } catch (exifError) {
+            console.warn("Could not insert EXIF for single download:", exifError);
+            toast({ title: 'Aviso EXIF', description: 'Não foi possível reanexar dados EXIF à imagem baixada.', variant: 'default' });
+        }
+      }
+
       if (dataURL) {
         const link = document.createElement('a');
         link.href = dataURL;
@@ -221,12 +237,19 @@ export function ActionButtonsSection() {
         toast({ title: 'Erro no Download', description: 'Não foi possível gerar a imagem para download.', variant: 'destructive' });
       }
     } else {
-      // Download all images as ZIP
       const zip = new JSZip();
       toast({ title: 'Preparando ZIP...', description: 'Gerando imagens, por favor aguarde.' });
 
       for (const imgObject of allImages) {
-        const dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY);
+        let dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY);
+        if (dataURL && imgObject.exifData) {
+          try {
+            dataURL = piexif.insert(imgObject.exifData, dataURL);
+          } catch (exifError) {
+            console.warn(`Could not insert EXIF for ${imgObject.baseFileName} in ZIP:`, exifError);
+          }
+        }
+        
         if (dataURL) {
           const response = await fetch(dataURL);
           const blob = await response.blob();
@@ -242,7 +265,7 @@ export function ActionButtonsSection() {
           link.href = URL.createObjectURL(content);
           link.download = 'retrograin_edits.zip';
           document.body.appendChild(link);
-link.click();
+          link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(link.href); 
           toast({ title: 'Download do ZIP Iniciado!', description: 'retrograin_edits.zip' });
@@ -277,9 +300,9 @@ link.click();
         isDriveAuthorized ? (
           <>
             <Button
-              onClick={saveToDrive} // Changed from handleDriveAction to saveToDrive directly
+              onClick={saveToDrive} 
               disabled={isConnectingOrSavingToDrive || !originalImage}
-              variant="default" // Changed from outline to default for primary action
+              variant="default" 
               className="w-full"
             >
               <Save className="mr-2 h-4 w-4" />
@@ -302,7 +325,7 @@ link.click();
         )
       )}
 
-      <Button onClick={handleDownload} disabled={allImages.length === 0} className="w-full" variant="default">
+      <Button onClick={handleDownloadInternal} disabled={allImages.length === 0} className="w-full" variant="default">
         <Download className="mr-2 h-4 w-4" />
         {downloadButtonText}
       </Button>
