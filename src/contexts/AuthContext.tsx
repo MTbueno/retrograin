@@ -35,14 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         console.error("Error processing redirect result:", error);
-        if (error.code !== 'auth/redirect-cancelled' && error.code !== 'auth/redirect-cancelled-by-user') {
+        // Avoid toasting for common "no redirect" scenarios or user cancellations
+        if (error.code !== 'auth/redirect-cancelled' && error.code !== 'auth/redirect-cancelled-by-user' && error.code !== 'auth/no-redirect-operation') {
            toast({ title: 'Login Error', description: error.message || 'Failed to process sign-in after redirect.', variant: 'destructive' });
         }
       })
       .finally(() => {
         // Whether redirect processing succeeded or failed,
         // allow onAuthStateChanged to be the final arbiter of loading state.
-        // However, if onAuthStateChanged doesn't fire quickly, this might be too soon.
         // The primary setLoading(false) should be in onAuthStateChanged.
       });
 
@@ -57,16 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     setLoading(true); // Indicate an auth operation is starting
 
-    // Check for PWA-like modes (standalone or minimal-ui)
-    const isPwaLikeMode = typeof window !== 'undefined' && 
-                          (window.matchMedia('(display-mode: standalone)').matches || 
-                           window.matchMedia('(display-mode: minimal-ui)').matches);
+    let isPwaMode = false;
+    if (typeof window !== 'undefined') {
+      isPwaMode = window.matchMedia('(display-mode: standalone)').matches || 
+                  window.matchMedia('(display-mode: minimal-ui)').matches;
+    }
 
-    if (isPwaLikeMode) {
+    if (isPwaMode) {
       // PWA-like mode: Use signInWithRedirect
       try {
         await signInWithRedirect(auth, googleProvider);
-        // Redirect will occur. setLoading(false) will be handled by onAuthStateChanged on return.
+        // Redirect will occur. setLoading(false) will be handled by onAuthStateChanged on return,
+        // or if init itself fails below.
       } catch (error: any) {
         console.error("Error initiating sign in with redirect: ", error);
         toast({
@@ -90,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
           toast({
             title: 'Login Popup Blocked',
-            description: 'The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site. If you are trying to run this as an installed app, this method might not work reliably.',
+            description: 'The Google Sign-In popup was blocked. Please check your browser settings to allow popups for this site.',
             variant: 'destructive',
             duration: 8000,
           });
