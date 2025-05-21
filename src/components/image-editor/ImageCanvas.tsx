@@ -6,7 +6,11 @@ import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContex
 import { Card } from '@/components/ui/card';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
-// Helper function to apply a canvas blend effect (used for Highlights, Shadows, Tints)
+const PREVIEW_SCALE_FACTOR = 0.5;
+const NOISE_CANVAS_SIZE = 100;
+const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6 * 0.5;
+
+// Helper function to apply a canvas blend effect
 const applyBlendEffect = (
   ctx: CanvasRenderingContext2D,
   rectArgs: [number, number, number, number],
@@ -14,41 +18,15 @@ const applyBlendEffect = (
   alpha: number,
   compositeOperation: GlobalCompositeOperation
 ) => {
-  if (alpha > 0.001) { 
+  if (alpha > 0.001) {
     ctx.globalCompositeOperation = compositeOperation;
     ctx.fillStyle = color;
     ctx.globalAlpha = alpha;
     ctx.fillRect(...rectArgs);
-    ctx.globalAlpha = 1.0; 
-    ctx.globalCompositeOperation = 'source-over'; 
+    ctx.globalAlpha = 1.0;
+    ctx.globalCompositeOperation = 'source-over';
   }
 };
-
-// Helper function to construct the CSS filter string
-const getCssFilterString = (settings: ImageSettings): string => {
-  const filters: string[] = [];
-  // Base adjustments
-  if (settings.brightness !== 1) filters.push(`brightness(${settings.brightness})`);
-  if (settings.contrast !== 1) filters.push(`contrast(${settings.contrast})`);
-  if (settings.saturation !== 1) filters.push(`saturate(${settings.saturation})`);
-  if (settings.exposure !== 0) filters.push(`brightness(${1 + settings.exposure})`); // Exposure adds to brightness
-
-  // Blacks adjustment (approximated by adjusting brightness and contrast)
-  if (settings.blacks !== 0) {
-    // Positive blacks lift (increase brightness, decrease contrast slightly)
-    // Negative blacks crush (decrease brightness, increase contrast slightly)
-    const contrastFactor = 1 - Math.abs(settings.blacks) * 0.15; // Max 15% contrast change
-    const brightnessFactor = settings.blacks * 0.1; // Max 10% brightness change
-    filters.push(`contrast(${contrastFactor})`);
-    filters.push(`brightness(${1 + brightnessFactor})`);
-  }
-  
-  if (settings.hueRotate !== 0) filters.push(`hue-rotate(${settings.hueRotate}deg)`);
-  if (settings.filter) filters.push(settings.filter);
-
-  return filters.join(' ').trim() || 'none';
-};
-
 
 function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number): (...args: Parameters<F>) => void {
   let timeoutId: NodeJS.Timeout | null = null;
@@ -62,10 +40,6 @@ function debounce<F extends (...args: any[]) => void>(func: F, waitFor: number):
   };
 }
 
-const PREVIEW_SCALE_FACTOR = 0.5;
-const NOISE_CANVAS_SIZE = 100;
-const TINT_EFFECT_SCALING_FACTOR = 0.3 * 0.6 * 0.5; // Max 50% tint, with internal scaling factor
-
 export function ImageCanvas() {
   const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
   const noiseCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -78,21 +52,27 @@ export function ImageCanvas() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    // Initialize noise pattern if needed
     if (noiseCanvasRef.current && (!noisePatternRef.current || ctx.createPattern(noiseCanvasRef.current, 'repeat') === null)) {
         noisePatternRef.current = ctx.createPattern(noiseCanvasRef.current, 'repeat');
     }
 
-    const { rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY } = settings;
+    const {
+      brightness, contrast, saturation, exposure, highlights, shadows, blacks,
+      rotation, scaleX, scaleY, cropZoom, cropOffsetX, cropOffsetY,
+      colorTemperature,
+      tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation,
+      tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation,
+      vignetteIntensity, grainIntensity
+    } = settings;
 
+    // 1. Calculate source rectangle from original image based on crop settings
     let sWidth = originalImage.naturalWidth / cropZoom;
     let sHeight = originalImage.naturalHeight / cropZoom;
-
     const maxPanX = originalImage.naturalWidth - sWidth;
     const maxPanY = originalImage.naturalHeight - sHeight;
     let sx = (cropOffsetX * 0.5 + 0.5) * maxPanX;
     let sy = (cropOffsetY * 0.5 + 0.5) * maxPanY;
-    
+
     sWidth = Math.max(1, Math.round(sWidth));
     sHeight = Math.max(1, Math.round(sHeight));
     sx = Math.max(0, Math.min(Math.round(sx), originalImage.naturalWidth - sWidth));
@@ -102,122 +82,148 @@ export function ImageCanvas() {
       console.error("Invalid source dimensions for drawImage:", { sx, sy, sWidth, sHeight });
       return;
     }
-    
-    let canvasBufferWidth, canvasBufferHeight;
+
+    // 2. Determine canvas buffer dimensions based on source rect and 90/270 rotation
+    let canvasPhysicalWidth = sWidth;
+    let canvasPhysicalHeight = sHeight;
+
     if (rotation === 90 || rotation === 270) {
-      canvasBufferWidth = sHeight; 
-      canvasBufferHeight = sWidth;
-    } else {
-      canvasBufferWidth = sWidth;
-      canvasBufferHeight = sHeight;
+      canvasPhysicalWidth = sHeight; // Swapped
+      canvasPhysicalHeight = sWidth;  // Swapped
     }
 
+    // 3. Apply preview scaling factor to canvas buffer dimensions
     const currentScaleFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1;
-    canvas.width = Math.max(1, Math.round(canvasBufferWidth * currentScaleFactor * Math.abs(scaleX)));
-    canvas.height = Math.max(1, Math.round(canvasBufferHeight * currentScaleFactor * Math.abs(scaleY)));
-    
-    const finalDestWidth = canvas.width / Math.abs(scaleX);
-    const finalDestHeight = canvas.height / Math.abs(scaleY);
-    
-    ctx.clearRect(0,0, canvas.width, canvas.height);
+    canvas.width = Math.max(1, Math.round(canvasPhysicalWidth * currentScaleFactor));
+    canvas.height = Math.max(1, Math.round(canvasPhysicalHeight * currentScaleFactor));
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    
+
+    // 4. Translate to center of canvas, then apply 90-deg rotation and flips
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
-    ctx.scale(scaleX, scaleY);
+    ctx.scale(scaleX, scaleY); // Flips are applied to the context
 
-    // --- Apply CSS filters via ctx.filter ---
-    ctx.filter = 'none'; // Explicitly reset before applying new filters
-    const filterString = getCssFilterString(settings);
-    if (filterString !== 'none') {
-      ctx.filter = filterString;
-    }
-    
-    // --- Draw base image ---
-    ctx.drawImage(
-      originalImage,
-      sx, sy, sWidth, sHeight,            
-      -finalDestWidth / 2, 
-      -finalDestHeight / 2,
-      finalDestWidth,        
-      finalDestHeight
-    );
+    // 5. Define the destination drawing dimensions (these are relative to the *unrotated* source content)
+    //    These are the dimensions of the content (sWidth, sHeight) scaled by the preview factor.
+    const destContentWidth = sWidth * currentScaleFactor;
+    const destContentHeight = sHeight * currentScaleFactor;
 
-    // --- Reset CSS filter before applying canvas blend effects ---
-    ctx.filter = 'none'; 
-    
-    const rectArgs: [number, number, number, number] = [
-      -finalDestWidth / 2, 
-      -finalDestHeight / 2, 
-      finalDestWidth, 
-      finalDestHeight
+    // --- Rectangle arguments for all canvas effects based on destination content size ---
+    const effectRectArgs: [number, number, number, number] = [
+      -destContentWidth / 2,
+      -destContentHeight / 2,
+      destContentWidth,
+      destContentHeight
     ];
 
-    // --- Apply Canvas-based Adjustments ---
-    // Shadows (Canvas specific)
-    if (settings.shadows > 0) { 
-      applyBlendEffect(ctx, rectArgs, 'rgb(128, 128, 128)', settings.shadows * 0.175 * 0.25, 'screen');
-    } else if (settings.shadows < 0) { 
-      applyBlendEffect(ctx, rectArgs, 'rgb(50, 50, 50)', Math.abs(settings.shadows) * 0.1 * 0.25, 'multiply');
+    // --- Apply Canvas-based Adjustments (Brightness, Contrast, Saturation, Exposure, Blacks) ---
+    // BRIGHTNESS
+    if (brightness !== 1) {
+      const brightValue = brightness -1; // -0.5 to 0.5
+      if (brightValue > 0) applyBlendEffect(ctx, effectRectArgs, `rgba(255, 255, 255, ${brightValue * 0.5})`, 1, 'screen');
+      else applyBlendEffect(ctx, effectRectArgs, `rgba(0, 0, 0, ${Math.abs(brightValue) * 0.5})`, 1, 'multiply');
+    }
+    // EXPOSURE
+    if (exposure !== 0) {
+      if (exposure > 0) applyBlendEffect(ctx, effectRectArgs, `rgba(220, 220, 220, ${exposure * 0.3})`, 1, 'screen');
+      else applyBlendEffect(ctx, effectRectArgs, `rgba(30, 30, 30, ${Math.abs(exposure) * 0.3})`, 1, 'multiply');
+    }
+    // CONTRAST
+    if (contrast !== 1) {
+        const contrastValue = contrast - 1; // -0.5 to 0.5
+        applyBlendEffect(ctx, effectRectArgs, `rgba(128, 128, 128, ${Math.abs(contrastValue)})`, 1, contrastValue > 0 ? 'overlay' : 'soft-light');
+    }
+    // SATURATION (only desaturation is approximated here)
+    if (saturation < 0.99) { // if saturation is less than 1 (default)
+        const grayValue = (1 - saturation) * 0.7; // max 70% gray overlay
+        applyBlendEffect(ctx, effectRectArgs, `rgba(128, 128, 128, ${grayValue})`, 1, 'color');
+    }
+    // BLACKS
+    if (blacks !== 0) { // -1 to 1
+        const blackAdjustAlpha = Math.abs(blacks) * 0.15; // Max 15% effect
+        if (blacks > 0) { // Lift blacks (make them grayer)
+            applyBlendEffect(ctx, effectRectArgs, `rgba(50, 50, 50, ${blackAdjustAlpha})`, 1, 'screen');
+        } else { // Crush blacks (make them darker)
+            applyBlendEffect(ctx, effectRectArgs, `rgba(20, 20, 20, ${blackAdjustAlpha})`, 1, 'multiply');
+        }
     }
 
-    // Highlights (Canvas specific)
-    if (settings.highlights < 0) { 
-      applyBlendEffect(ctx, rectArgs, 'rgb(128, 128, 128)', Math.abs(settings.highlights) * 0.175 * 0.25, 'multiply');
-    } else if (settings.highlights > 0) { 
-      applyBlendEffect(ctx, rectArgs, 'rgb(200, 200, 200)', settings.highlights * 0.1 * 0.25, 'screen');
-    }
+    // --- Draw base image ---
+    // The source is (sx, sy, sWidth, sHeight) from originalImage.
+    // The destination is centered in the transformed context, with dimensions destContentWidth, destContentHeight.
+    ctx.drawImage(
+      originalImage,
+      sx, sy, sWidth, sHeight,
+      -destContentWidth / 2,
+      -destContentHeight / 2,
+      destContentWidth,
+      destContentHeight
+    );
 
-    // Color Temperature
-    if (settings.colorTemperature !== 0) {
-      const temp = settings.colorTemperature / 100;
-      const alpha = Math.abs(temp) * 0.2;
-      const color = temp > 0 ? `rgba(255, 165, 0, ${alpha})` : `rgba(0, 0, 255, ${alpha})`;
-      applyBlendEffect(ctx, rectArgs, color, 1, 'overlay');
+    // --- Apply other Canvas-based Adjustments (Highlights, Shadows, Tints, etc.) ---
+    // SHADOWS
+    if (shadows > 0) {
+      applyBlendEffect(ctx, effectRectArgs, 'rgb(128, 128, 128)', shadows * 0.175 * 0.25 * 0.5, 'screen');
+    } else if (shadows < 0) {
+      applyBlendEffect(ctx, effectRectArgs, 'rgb(50, 50, 50)', Math.abs(shadows) * 0.1 * 0.25 * 0.5, 'multiply');
     }
-
-    const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturation: number, blendMode: GlobalCompositeOperation) => {
+    // HIGHLIGHTS
+    if (highlights < 0) {
+      applyBlendEffect(ctx, effectRectArgs, 'rgb(128, 128, 128)', Math.abs(highlights) * 0.175 * 0.25 * 0.5, 'multiply');
+    } else if (highlights > 0) {
+      applyBlendEffect(ctx, effectRectArgs, 'rgb(200, 200, 200)', highlights * 0.1 * 0.25 * 0.5, 'screen');
+    }
+    // COLOR TEMPERATURE
+    if (colorTemperature !== 0) {
+      const temp = colorTemperature / 100; // -1 to 1
+      const alpha = Math.abs(temp) * 0.2; // Max 20% opacity
+      const color = temp > 0 ? `rgba(255, 165, 0, ${alpha})` : `rgba(0, 0, 255, ${alpha})`; // Orange for warm, Blue for cool
+      applyBlendEffect(ctx, effectRectArgs, color, 1, 'overlay');
+    }
+    // TINTS
+    const applyTintWithSaturation = (baseColorHex: string, intensity: number, saturationFactor: number, blendMode: GlobalCompositeOperation) => {
       if (intensity > 0 && baseColorHex && baseColorHex !== '#000000' && baseColorHex !== '') {
         const rgbColor = hexToRgb(baseColorHex);
         if (rgbColor) {
-          const saturatedRgb = desaturateRgb(rgbColor, saturation);
+          const saturatedRgb = desaturateRgb(rgbColor, saturationFactor);
           const finalColorHex = rgbToHex(saturatedRgb.r, saturatedRgb.g, saturatedRgb.b);
-          applyBlendEffect(ctx, rectArgs, finalColorHex, intensity * TINT_EFFECT_SCALING_FACTOR, blendMode);
+          applyBlendEffect(ctx, effectRectArgs, finalColorHex, intensity * TINT_EFFECT_SCALING_FACTOR, blendMode);
         }
       }
     };
-    
-    applyTintWithSaturation(settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation, 'color-dodge');
-    applyTintWithSaturation(settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation, 'color-burn');
-    
-    // Vignette
-    if (settings.vignetteIntensity > 0) {
-      const centerX = 0; 
+    applyTintWithSaturation(tintShadowsColor, tintShadowsIntensity, tintShadowsSaturation, 'color-dodge');
+    applyTintWithSaturation(tintHighlightsColor, tintHighlightsIntensity, tintHighlightsSaturation, 'color-burn');
+
+    // VIGNETTE
+    if (vignetteIntensity > 0) {
+      const centerX = 0; // Center of the transformed context
       const centerY = 0;
-      const vignetteCanvasWidth = finalDestWidth;
-      const vignetteCanvasHeight = finalDestHeight;
-      const radiusX = vignetteCanvasWidth / 2;
-      const radiusY = vignetteCanvasHeight / 2;
-      const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
+      // Use destContentWidth/Height for vignette radius calculation
+      const radiusX = destContentWidth / 2;
+      const radiusY = destContentHeight / 2;
+      const outerRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY); // Ensure vignette covers the content area
       const gradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.2, centerX, centerY, outerRadius * 0.95);
       gradient.addColorStop(0, `rgba(0,0,0,0)`);
-      gradient.addColorStop(1, `rgba(0,0,0,${settings.vignetteIntensity})`);
+      gradient.addColorStop(1, `rgba(0,0,0,${vignetteIntensity})`);
       ctx.fillStyle = gradient;
-      ctx.fillRect(...rectArgs);
+      ctx.fillRect(...effectRectArgs);
     }
 
-    // Grain
-    if (settings.grainIntensity > 0 && noisePatternRef.current) {
-        ctx.save(); 
-        ctx.translate(-finalDestWidth/2, -finalDestHeight/2);
+    // GRAIN
+    if (grainIntensity > 0 && noisePatternRef.current) {
+        ctx.save();
+        // Translate to the top-left of the content area before applying pattern
+        ctx.translate(-destContentWidth / 2, -destContentHeight / 2);
         ctx.fillStyle = noisePatternRef.current;
-        ctx.globalAlpha = settings.grainIntensity * 0.5;
+        ctx.globalAlpha = grainIntensity * 0.5; // Max 50% grain opacity
         ctx.globalCompositeOperation = 'overlay';
-        ctx.fillRect(0, 0, finalDestWidth, finalDestHeight); 
-        ctx.restore(); 
+        ctx.fillRect(0, 0, destContentWidth, destContentHeight);
+        ctx.restore(); // Restore from grain's own save state
     }
 
-    ctx.restore();
+    ctx.restore(); // Restore from the initial save state
   }, [originalImage, settings, canvasRef, isPreviewing, noisePatternRef]);
 
   useEffect(() => {
@@ -230,15 +236,16 @@ export function ImageCanvas() {
             const imageData = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                const rand = Math.floor(Math.random() * 150) + 50;
+                const rand = Math.floor(Math.random() * 150) + 50; // Range 50-200 for noise color
                 data[i] = rand;
                 data[i + 1] = rand;
                 data[i + 2] = rand;
-                data[i + 3] = 255;
+                data[i + 3] = 255; // Alpha
             }
             noiseCtx.putImageData(imageData, 0, 0);
             noiseCanvasRef.current = noiseCv;
 
+            // Ensure noise pattern is created if main canvas context is available
             const mainCanvas = canvasRef.current;
             if (mainCanvas) {
                 const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
@@ -248,12 +255,12 @@ export function ImageCanvas() {
             }
         }
     }
-  }, [canvasRef]); 
+  }, [canvasRef]);
 
 
   const debouncedDrawImage = useMemo(
     () => debounce(drawImageImmediately, isPreviewing ? 30 : 200),
-    [drawImageImmediately, isPreviewing] 
+    [drawImageImmediately, isPreviewing]
   );
 
   useEffect(() => {
@@ -268,7 +275,6 @@ export function ImageCanvas() {
         if (canvas) {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             if (ctx) {
-                ctx.filter = 'none'; // Clear any filters when no image
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         }
@@ -291,5 +297,3 @@ export function ImageCanvas() {
     />
   );
 }
-
-    

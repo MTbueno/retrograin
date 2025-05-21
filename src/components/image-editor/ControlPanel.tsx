@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react'; // Added useState, useEffect
 import {
   Sidebar,
   SidebarHeader,
@@ -11,14 +11,14 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { FileUploadSection } from './FileUploadSection';
-import { AdjustmentsSection } from './AdjustmentsSection'; // Consolidated
+import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
 import { FiltersSection } from './FiltersSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const APP_VERSION = "alpha 0.1p"; 
+const APP_VERSION = "alpha 0.1q"; // Updated version
 
 export function ControlPanel() {
 
@@ -51,5 +51,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    
