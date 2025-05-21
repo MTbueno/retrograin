@@ -18,17 +18,24 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const APP_VERSION = "alpha 0.1v"; // Updated version
+const CURRENT_VERSION_STRING = "alpha 0.1v"; 
 
 export function ControlPanel() {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAppVersion(CURRENT_VERSION_STRING);
+  }, []);
 
   return (
     <Sidebar side="right" variant="sidebar" collapsible="none" className="border-l">
       <SidebarHeader className="p-4 border-b">
         <h2 className="text-xl font-semibold text-primary text-center">RetroGrain</h2>
-        <p className="text-xs text-muted-foreground text-center mt-1">
-          Versão: {APP_VERSION}
-        </p>
+        {appVersion && (
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Versão: {appVersion}
+          </p>
+        )}
       </SidebarHeader>
       <SidebarContent asChild>
         <ScrollArea className="h-full">
@@ -54,3 +61,4 @@ export function ControlPanel() {
 
     
 
+    
