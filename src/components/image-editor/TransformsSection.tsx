@@ -16,7 +16,7 @@ const THROTTLE_WAIT = 100; // ms
 export function TransformsSection() {
   const { dispatchSettings, settings, originalImage, setIsPreviewing } = useImageEditor();
 
-  const throttledDispatch = useCallback(
+  const throttledDispatchSettings = useCallback(
     throttle((action: SettingsAction) => {
       dispatchSettings(action);
     }, THROTTLE_WAIT, { leading: true, trailing: true }),
@@ -38,7 +38,7 @@ export function TransformsSection() {
       action = { type: 'SET_CROP_OFFSET_Y', payload: value };
     }
     if (action) {
-      throttledDispatch(action);
+      throttledDispatchSettings(action);
     }
   };
 
@@ -56,11 +56,16 @@ export function TransformsSection() {
       action = { type: 'SET_CROP_OFFSET_Y', payload: value };
     }
     if (action) {
-      dispatchSettings(action); // Direct dispatch for final value
+      dispatchSettings(action); 
     }
     setIsPreviewing(false);
   };
 
+  const handleTransformButtonClick = (actionType: 'ROTATE_CW' | 'ROTATE_CCW' | 'FLIP_HORIZONTAL' | 'FLIP_VERTICAL') => {
+    if (!originalImage) return;
+    dispatchSettings({ type: actionType });
+    setIsPreviewing(false);
+  };
 
   const handleResetTransforms = () => {
     if (!originalImage) return;
@@ -119,7 +124,7 @@ export function TransformsSection() {
         <div className="grid grid-cols-4 gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'ROTATE_CCW' }); setIsPreviewing(false);}} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => handleTransformButtonClick('ROTATE_CCW')} disabled={!originalImage}>
                 <RotateCcw />
               </Button>
             </TooltipTrigger>
@@ -129,7 +134,7 @@ export function TransformsSection() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'ROTATE_CW' }); setIsPreviewing(false);}} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => handleTransformButtonClick('ROTATE_CW')} disabled={!originalImage}>
                 <RotateCw />
               </Button>
             </TooltipTrigger>
@@ -139,7 +144,7 @@ export function TransformsSection() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'FLIP_HORIZONTAL' }); setIsPreviewing(false);}} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => handleTransformButtonClick('FLIP_HORIZONTAL')} disabled={!originalImage}>
                 <FlipHorizontal />
               </Button>
             </TooltipTrigger>
@@ -149,7 +154,7 @@ export function TransformsSection() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'FLIP_VERTICAL' }); setIsPreviewing(false);}} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => handleTransformButtonClick('FLIP_VERTICAL')} disabled={!originalImage}>
                 <FlipVertical />
               </Button>
             </TooltipTrigger>
@@ -183,3 +188,5 @@ export function TransformsSection() {
     </TooltipProvider>
   );
 }
+
+    

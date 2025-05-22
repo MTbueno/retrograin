@@ -16,7 +16,7 @@ const THROTTLE_WAIT = 100; // ms
 export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
 
-  const throttledDispatch = useCallback(
+  const throttledDispatchSettings = useCallback(
     throttle((action: SettingsAction) => {
       dispatchSettings(action);
     }, THROTTLE_WAIT, { leading: true, trailing: true }),
@@ -33,7 +33,7 @@ export function AdjustmentsSection() {
           'tintHighlightsIntensity' | 'tintHighlightsSaturation' | 'sharpness',
     value: number
   ) => {
-    setIsPreviewing(true);
+    if (originalImage) setIsPreviewing(true);
     let action: SettingsAction | null = null;
     switch (type) {
       case 'brightness': action = { type: 'SET_BRIGHTNESS', payload: value }; break;
@@ -56,7 +56,7 @@ export function AdjustmentsSection() {
       case 'tintHighlightsSaturation': action = { type: 'SET_TINT_HIGHLIGHTS_SATURATION', payload: value }; break;
     }
     if (action) {
-      throttledDispatch(action);
+      throttledDispatchSettings(action);
     }
   };
 
@@ -94,7 +94,7 @@ export function AdjustmentsSection() {
     if (action) {
       dispatchSettings(action); // Direct dispatch for final value
     }
-    setIsPreviewing(false);
+    if (originalImage) setIsPreviewing(false);
   };
   
   const handleTintColorChange = (
@@ -112,7 +112,7 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    setIsPreviewing(false); // Update preview after color change
+    if (originalImage) setIsPreviewing(false);
   };
 
   const basicAdjustmentControls = [
@@ -221,6 +221,9 @@ export function AdjustmentsSection() {
               handleTintColorChange(tonalRange, newColor);
             }}
             className="h-4" 
+            onPointerUp={() => {
+              if (originalImage) setIsPreviewing(false);
+            }}
           />
           {renderSlider({
             id: saturationControlId,
@@ -266,3 +269,5 @@ export function AdjustmentsSection() {
     </div>
   );
 }
+
+    

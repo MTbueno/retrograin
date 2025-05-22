@@ -28,7 +28,7 @@ export function SelectiveColorSection() {
   const activeTarget = settings.activeSelectiveColorTarget;
   const currentAdjustments = settings.selectiveColors[activeTarget];
 
-  const throttledDispatch = useCallback(
+  const throttledDispatchSettings = useCallback(
     throttle((action: SettingsAction) => {
       dispatchSettings(action);
     }, THROTTLE_WAIT, { leading: true, trailing: true }),
@@ -37,15 +37,15 @@ export function SelectiveColorSection() {
 
   const handleTargetChange = (target: SelectiveColorTarget) => {
     dispatchSettings({ type: 'SET_ACTIVE_SELECTIVE_COLOR_TARGET', payload: target });
-    setIsPreviewing(false); // Ensure preview updates if target changes
+    if (originalImage) setIsPreviewing(false); 
   };
 
   const handleAdjustmentChange = (
     type: 'hue' | 'saturation' | 'luminance',
     value: number
   ) => {
-    setIsPreviewing(true);
-    throttledDispatch({
+    if (originalImage) setIsPreviewing(true);
+    throttledDispatchSettings({
       type: 'SET_SELECTIVE_COLOR_ADJUSTMENT',
       payload: {
         target: activeTarget,
@@ -65,7 +65,7 @@ export function SelectiveColorSection() {
         adjustment: { [type]: value },
       },
     });
-    setIsPreviewing(false);
+    if (originalImage) setIsPreviewing(false);
   };
 
   const adjustmentControls = [
@@ -106,7 +106,7 @@ export function SelectiveColorSection() {
             </Label>
             <span className="text-xs text-muted-foreground">
               {control.id === 'hue' 
-                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.1 / 0.5))}°` // Adjusted display for new range
+                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.1 / 0.5))}°` 
                 : `${Math.round((control.value ?? 0) * 100)}%`}
             </span>
           </div>
@@ -132,3 +132,5 @@ export function SelectiveColorSection() {
     </div>
   );
 }
+
+    
