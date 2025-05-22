@@ -13,12 +13,12 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-import { FiltersSection } from './FiltersSection'; // Keep for future, or if you re-add CSS presets
+// import { FiltersSection } from './FiltersSection'; // Presets are not WebGL yet
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.12_effects"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.13_transforms"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -60,6 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-
-    
