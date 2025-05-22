@@ -15,6 +15,7 @@ export interface ImageSettings {
   whites: number;
   blacks: number;
   hueRotate: number;
+  // filter: string | null; // Presets are not WebGL ready yet
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
@@ -24,13 +25,12 @@ export interface ImageSettings {
   tintHighlightsColor: string;
   tintHighlightsIntensity: number;
   tintHighlightsSaturation: number;
-  rotation: number;
-  scaleX: number;
-  scaleY: number;
-  cropZoom: number;
-  cropOffsetX: number;
-  cropOffsetY: number;
-  tiltAngle: number; // New: For free rotation/tilt
+  rotation: number; // 0, 90, 180, 270
+  scaleX: number; // 1 or -1
+  scaleY: number; // 1 or -1
+  cropZoom: number; // 1 (no zoom) to N
+  cropOffsetX: number; // -1 to 1
+  cropOffsetY: number; // -1 to 1
 }
 
 export const initialImageSettings: ImageSettings = {
@@ -44,6 +44,7 @@ export const initialImageSettings: ImageSettings = {
   whites: 0,
   blacks: 0,
   hueRotate: 0,
+  // filter: null, // Presets are not WebGL ready yet
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
@@ -59,7 +60,6 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
-  tiltAngle: 0, // New: Default tilt angle
 };
 
 export interface ImageObject {
@@ -81,6 +81,7 @@ export type SettingsAction =
   | { type: 'SET_WHITES'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
   | { type: 'SET_HUE_ROTATE'; payload: number }
+  // | { type: 'APPLY_FILTER'; payload: string | null } // Presets are not WebGL ready yet
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -97,8 +98,7 @@ export type SettingsAction =
   | { type: 'SET_CROP_ZOOM'; payload: number }
   | { type: 'SET_CROP_OFFSET_X'; payload: number }
   | { type: 'SET_CROP_OFFSET_Y'; payload: number }
-  | { type: 'SET_TILT_ANGLE'; payload: number } // New: Action for tilt
-  | { type: 'RESET_CROP_AND_ANGLE' }
+  | { type: 'RESET_CROP_AND_TRANSFORMS' } 
   | { type: 'RESET_SETTINGS' }
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings };
 
@@ -124,6 +124,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, blacks: action.payload };
     case 'SET_HUE_ROTATE':
       return { ...state, hueRotate: action.payload };
+    // case 'APPLY_FILTER': // Presets are not WebGL ready yet
+    //   return { ...state, filter: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -156,10 +158,16 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetX: Math.max(-1, Math.min(1, action.payload)) };
     case 'SET_CROP_OFFSET_Y':
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
-    case 'SET_TILT_ANGLE': // New: Reducer for tilt
-      return { ...state, tiltAngle: action.payload };
-    case 'RESET_CROP_AND_ANGLE':
-      return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0, tiltAngle: 0 }; // Reset tilt too
+    case 'RESET_CROP_AND_TRANSFORMS':
+      return { 
+        ...state, 
+        cropZoom: 1, 
+        cropOffsetX: 0, 
+        cropOffsetY: 0, 
+        rotation: 0, 
+        scaleX: 1, 
+        scaleY: 1 
+      };
     case 'RESET_SETTINGS':
       return {
         ...initialImageSettings,
@@ -169,7 +177,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
         cropZoom: state.cropZoom,
         cropOffsetX: state.cropOffsetX,
         cropOffsetY: state.cropOffsetY,
-        tiltAngle: state.tiltAngle, // Preserve tilt on general reset
       };
     case 'LOAD_SETTINGS':
       return { ...action.payload };
@@ -177,7 +184,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return state;
   }
 }
-
 
 interface ImageEditorContextType {
   originalImage: HTMLImageElement | null;
@@ -190,7 +196,7 @@ interface ImageEditorContextType {
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
   canvasRef: RefObject<HTMLCanvasElement>;
-  getCanvasDataURL: (type?: string, quality?: number) => string | null;
+  getCanvasDataURL: (type?: string, quality?: number) => string | null; 
   generateImageDataUrlWithSettings: (imageObject: ImageObject, type?: string, quality?: number) => Promise<string | null>;
   isPreviewing: boolean;
   setIsPreviewing: (isPreviewing: boolean) => void;
@@ -239,7 +245,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
-
 
   useEffect(() => {
     if (activeImageId && currentSettings) {
@@ -304,8 +309,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       return null;
     }
     try {
-        // For WebGL, toDataURL might need preserveDrawingBuffer: true on context creation.
-        // This is set in ImageCanvas.tsx during getContext.
       return currentCanvas.toDataURL(type, quality);
     } catch (e) {
       console.error("Error getting data URL from WebGL canvas:", e);
@@ -328,43 +331,30 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       if (targetImg) {
         const newSettings = {
           ...copiedSettings,
-          // Preserve transform settings of the target image when pasting adjustments
           rotation: targetImg.settings.rotation,
           scaleX: targetImg.settings.scaleX,
           scaleY: targetImg.settings.scaleY,
           cropZoom: targetImg.settings.cropZoom,
           cropOffsetX: targetImg.settings.cropOffsetX,
           cropOffsetY: targetImg.settings.cropOffsetY,
-          tiltAngle: targetImg.settings.tiltAngle,
         };
         dispatchSettings({ type: 'LOAD_SETTINGS', payload: newSettings });
       }
     }
   }, [activeImageId, copiedSettings, allImages]);
 
-
   const generateImageDataUrlWithSettings = useCallback(async (
-    imageObject: ImageObject, // Now takes the full ImageObject
+    imageObject: ImageObject,
     type: string = 'image/jpeg',
     quality: number = 0.92
   ): Promise<string | null> => {
-    const { imageElement, settings } = imageObject;
-    // This function needs a proper WebGL offscreen rendering implementation.
-    // For now, it will simulate by using the main canvas if it matches the active image,
-    // or log a warning. This is a placeholder for a true offscreen WebGL render.
-
-    if (activeImageId === imageObject.id && canvasRef.current) {
-        // If it's the active image, we can try to get data from the main canvas.
-        // This assumes the main canvas is already up-to-date with 'settings'.
-        // For a true isolated generation, we'd need to re-render to an offscreen WebGL canvas.
-        console.warn("generateImageDataUrlWithSettings: Using main canvas for active image. For non-active images or robust export, full offscreen WebGL rendering is needed.");
+    if (activeImageId === imageObject.id && canvasRef.current && currentActiveImageElement) {
+        console.warn("generateImageDataUrlWithSettings: Using main canvas for active image.");
         return canvasRef.current.toDataURL(type, quality);
     }
-
-    console.warn("generateImageDataUrlWithSettings for WebGL (ZIP export for non-active images) needs a full offscreen WebGL rendering implementation and is currently not functional for them.");
+    console.error("generateImageDataUrlWithSettings for WebGL (ZIP export for non-active images) is not fully implemented for non-active images and will return null.");
     return null;
-  }, [activeImageId, canvasRef]);
-
+  }, [activeImageId, canvasRef, currentActiveImageElement]);
 
   return (
     <ImageEditorContext.Provider

@@ -13,12 +13,12 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-// import { FiltersSection } from './FiltersSection'; // Presets are not WebGL yet
+// import { FiltersSection } from './FiltersSection'; // Presets are not WebGL ready yet
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.16_transform_rework";
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.16_transforms_rework";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function ControlPanel() {
             <SidebarSeparator />
             <TransformsSection />
             {/* <SidebarSeparator />
-            <FiltersSection /> // Presets are not WebGL yet */}
+            <FiltersSection /> // Presets are not WebGL ready yet */}
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
@@ -60,5 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    
