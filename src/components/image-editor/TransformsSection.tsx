@@ -1,16 +1,27 @@
 
 "use client";
 
-import { useImageEditor } from '@/contexts/ImageEditorContext';
+import React, { useCallback } from 'react';
+import { useImageEditor, type SettingsAction } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { RotateCcw, RotateCw, FlipHorizontal, FlipVertical, ZoomIn, MoveHorizontal, MoveVertical, RefreshCcw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
+import { throttle } from 'lodash';
+
+const THROTTLE_WAIT = 100; // ms
 
 export function TransformsSection() {
   const { dispatchSettings, settings, originalImage, setIsPreviewing } = useImageEditor();
+
+  const throttledDispatch = useCallback(
+    throttle((action: SettingsAction) => {
+      dispatchSettings(action);
+    }, THROTTLE_WAIT, { leading: true, trailing: true }),
+    [dispatchSettings]
+  );
 
   const handleTransformSliderChange = (
     type: 'cropZoom' | 'cropOffsetX' | 'cropOffsetY',
@@ -18,14 +29,38 @@ export function TransformsSection() {
   ) => {
     if (!originalImage) return;
     setIsPreviewing(true); 
+    let action: SettingsAction | null = null;
     if (type === 'cropZoom') {
-      dispatchSettings({ type: 'SET_CROP_ZOOM', payload: value });
+      action = { type: 'SET_CROP_ZOOM', payload: value };
     } else if (type === 'cropOffsetX') {
-      dispatchSettings({ type: 'SET_CROP_OFFSET_X', payload: value });
+      action = { type: 'SET_CROP_OFFSET_X', payload: value };
     } else if (type === 'cropOffsetY') {
-      dispatchSettings({ type: 'SET_CROP_OFFSET_Y', payload: value });
+      action = { type: 'SET_CROP_OFFSET_Y', payload: value };
+    }
+    if (action) {
+      throttledDispatch(action);
     }
   };
+
+  const handleTransformSliderCommit = (
+    type: 'cropZoom' | 'cropOffsetX' | 'cropOffsetY',
+    value: number
+  ) => {
+    if (!originalImage) return;
+    let action: SettingsAction | null = null;
+    if (type === 'cropZoom') {
+      action = { type: 'SET_CROP_ZOOM', payload: value };
+    } else if (type === 'cropOffsetX') {
+      action = { type: 'SET_CROP_OFFSET_X', payload: value };
+    } else if (type === 'cropOffsetY') {
+      action = { type: 'SET_CROP_OFFSET_Y', payload: value };
+    }
+    if (action) {
+      dispatchSettings(action); // Direct dispatch for final value
+    }
+    setIsPreviewing(false);
+  };
+
 
   const handleResetTransforms = () => {
     if (!originalImage) return;
@@ -67,13 +102,11 @@ export function TransformsSection() {
           step={control.step}
           value={[currentValue]}
           onValueChange={(val) => handleTransformSliderChange(control.id as any, val[0])}
-          disabled={!originalImage}
+          onValueCommit={(val) => handleTransformSliderCommit(control.id as any, val[0])}
           onPointerDown={() => {
             if (originalImage) setIsPreviewing(true);
           }}
-          onValueCommit={() => {
-            if (originalImage) setIsPreviewing(false);
-          }}
+          disabled={!originalImage}
         />
       </div>
     );
@@ -86,7 +119,7 @@ export function TransformsSection() {
         <div className="grid grid-cols-4 gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => dispatchSettings({ type: 'ROTATE_CCW' })} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'ROTATE_CCW' }); setIsPreviewing(false);}} disabled={!originalImage}>
                 <RotateCcw />
               </Button>
             </TooltipTrigger>
@@ -96,7 +129,7 @@ export function TransformsSection() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => dispatchSettings({ type: 'ROTATE_CW' })} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'ROTATE_CW' }); setIsPreviewing(false);}} disabled={!originalImage}>
                 <RotateCw />
               </Button>
             </TooltipTrigger>
@@ -106,7 +139,7 @@ export function TransformsSection() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => dispatchSettings({ type: 'FLIP_HORIZONTAL' })} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'FLIP_HORIZONTAL' }); setIsPreviewing(false);}} disabled={!originalImage}>
                 <FlipHorizontal />
               </Button>
             </TooltipTrigger>
@@ -116,7 +149,7 @@ export function TransformsSection() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => dispatchSettings({ type: 'FLIP_VERTICAL' })} disabled={!originalImage}>
+              <Button variant="outline" size="icon" onClick={() => {dispatchSettings({ type: 'FLIP_VERTICAL' }); setIsPreviewing(false);}} disabled={!originalImage}>
                 <FlipVertical />
               </Button>
             </TooltipTrigger>

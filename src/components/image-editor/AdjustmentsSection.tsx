@@ -1,84 +1,100 @@
 
 "use client";
 
-import { useImageEditor } from '@/contexts/ImageEditorContext';
+import React, { useCallback } from 'react';
+import { useImageEditor, type SettingsAction } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Brush, Maximize2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
+import { throttle } from 'lodash';
+
+const THROTTLE_WAIT = 100; // ms
 
 export function AdjustmentsSection() {
-  const { settings, dispatchSettings, originalImage } = useImageEditor();
+  const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
+
+  const throttledDispatch = useCallback(
+    throttle((action: SettingsAction) => {
+      dispatchSettings(action);
+    }, THROTTLE_WAIT, { leading: true, trailing: true }),
+    [dispatchSettings]
+  );
 
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' | 
           'highlights' | 'shadows' | 'whites' | 'blacks' | 
           'hueRotate' | 
-          'vignetteIntensity' | 'grainIntensity' | 'sharpness' |
+          'vignetteIntensity' | 'grainIntensity' |
           'colorTemperature' | 
           'tintShadowsIntensity' | 'tintShadowsSaturation' |
-          'tintHighlightsIntensity' | 'tintHighlightsSaturation',
+          'tintHighlightsIntensity' | 'tintHighlightsSaturation' | 'sharpness',
     value: number
   ) => {
-
+    setIsPreviewing(true);
+    let action: SettingsAction | null = null;
     switch (type) {
-      case 'brightness':
-        dispatchSettings({ type: 'SET_BRIGHTNESS', payload: value });
-        break;
-      case 'contrast':
-        dispatchSettings({ type: 'SET_CONTRAST', payload: value });
-        break;
-      case 'saturation':
-        dispatchSettings({ type: 'SET_SATURATION', payload: value });
-        break;
-      case 'vibrance':
-        dispatchSettings({ type: 'SET_VIBRANCE', payload: value });
-        break;
-      case 'exposure':
-        dispatchSettings({ type: 'SET_EXPOSURE', payload: value });
-        break;
-      case 'highlights':
-        dispatchSettings({ type: 'SET_HIGHLIGHTS', payload: value });
-        break;
-      case 'shadows':
-        dispatchSettings({ type: 'SET_SHADOWS', payload: value });
-        break;
-      case 'whites':
-        dispatchSettings({ type: 'SET_WHITES', payload: value });
-        break;
-      case 'blacks':
-        dispatchSettings({ type: 'SET_BLACKS', payload: value });
-        break;
-      case 'hueRotate': 
-        dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
-        break;
-      case 'vignetteIntensity':
-        dispatchSettings({ type: 'SET_VIGNETTE_INTENSITY', payload: value });
-        break;
-      case 'grainIntensity':
-        dispatchSettings({ type: 'SET_GRAIN_INTENSITY', payload: value });
-        break;
-      case 'sharpness':
-        dispatchSettings({ type: 'SET_SHARPNESS', payload: value });
-        break;
-      case 'colorTemperature':
-        dispatchSettings({ type: 'SET_COLOR_TEMPERATURE', payload: value });
-        break;
-      case 'tintShadowsIntensity':
-        dispatchSettings({ type: 'SET_TINT_SHADOWS_INTENSITY', payload: value });
-        break;
-      case 'tintShadowsSaturation':
-        dispatchSettings({ type: 'SET_TINT_SHADOWS_SATURATION', payload: value });
-        break;
-      case 'tintHighlightsIntensity':
-        dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value });
-        break;
-      case 'tintHighlightsSaturation':
-        dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_SATURATION', payload: value });
-        break;
+      case 'brightness': action = { type: 'SET_BRIGHTNESS', payload: value }; break;
+      case 'contrast': action = { type: 'SET_CONTRAST', payload: value }; break;
+      case 'saturation': action = { type: 'SET_SATURATION', payload: value }; break;
+      case 'vibrance': action = { type: 'SET_VIBRANCE', payload: value }; break;
+      case 'exposure': action = { type: 'SET_EXPOSURE', payload: value }; break;
+      case 'highlights': action = { type: 'SET_HIGHLIGHTS', payload: value }; break;
+      case 'shadows': action = { type: 'SET_SHADOWS', payload: value }; break;
+      case 'whites': action = { type: 'SET_WHITES', payload: value }; break;
+      case 'blacks': action = { type: 'SET_BLACKS', payload: value }; break;
+      case 'hueRotate': action = { type: 'SET_HUE_ROTATE', payload: value }; break;
+      case 'vignetteIntensity': action = { type: 'SET_VIGNETTE_INTENSITY', payload: value }; break;
+      case 'grainIntensity': action = { type: 'SET_GRAIN_INTENSITY', payload: value }; break;
+      case 'sharpness': action = { type: 'SET_SHARPNESS', payload: value }; break;
+      case 'colorTemperature': action = { type: 'SET_COLOR_TEMPERATURE', payload: value }; break;
+      case 'tintShadowsIntensity': action = { type: 'SET_TINT_SHADOWS_INTENSITY', payload: value }; break;
+      case 'tintShadowsSaturation': action = { type: 'SET_TINT_SHADOWS_SATURATION', payload: value }; break;
+      case 'tintHighlightsIntensity': action = { type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value }; break;
+      case 'tintHighlightsSaturation': action = { type: 'SET_TINT_HIGHLIGHTS_SATURATION', payload: value }; break;
     }
+    if (action) {
+      throttledDispatch(action);
+    }
+  };
+
+  const handleSliderCommit = (
+    type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' |
+          'highlights' | 'shadows' | 'whites' | 'blacks' |
+          'hueRotate' |
+          'vignetteIntensity' | 'grainIntensity' |
+          'colorTemperature' |
+          'tintShadowsIntensity' | 'tintShadowsSaturation' |
+          'tintHighlightsIntensity' | 'tintHighlightsSaturation' | 'sharpness',
+    value: number
+  ) => {
+    let action: SettingsAction | null = null;
+    switch (type) {
+      case 'brightness': action = { type: 'SET_BRIGHTNESS', payload: value }; break;
+      case 'contrast': action = { type: 'SET_CONTRAST', payload: value }; break;
+      case 'saturation': action = { type: 'SET_SATURATION', payload: value }; break;
+      case 'vibrance': action = { type: 'SET_VIBRANCE', payload: value }; break;
+      case 'exposure': action = { type: 'SET_EXPOSURE', payload: value }; break;
+      case 'highlights': action = { type: 'SET_HIGHLIGHTS', payload: value }; break;
+      case 'shadows': action = { type: 'SET_SHADOWS', payload: value }; break;
+      case 'whites': action = { type: 'SET_WHITES', payload: value }; break;
+      case 'blacks': action = { type: 'SET_BLACKS', payload: value }; break;
+      case 'hueRotate': action = { type: 'SET_HUE_ROTATE', payload: value }; break;
+      case 'vignetteIntensity': action = { type: 'SET_VIGNETTE_INTENSITY', payload: value }; break;
+      case 'grainIntensity': action = { type: 'SET_GRAIN_INTENSITY', payload: value }; break;
+      case 'sharpness': action = { type: 'SET_SHARPNESS', payload: value }; break;
+      case 'colorTemperature': action = { type: 'SET_COLOR_TEMPERATURE', payload: value }; break;
+      case 'tintShadowsIntensity': action = { type: 'SET_TINT_SHADOWS_INTENSITY', payload: value }; break;
+      case 'tintShadowsSaturation': action = { type: 'SET_TINT_SHADOWS_SATURATION', payload: value }; break;
+      case 'tintHighlightsIntensity': action = { type: 'SET_TINT_HIGHLIGHTS_INTENSITY', payload: value }; break;
+      case 'tintHighlightsSaturation': action = { type: 'SET_TINT_HIGHLIGHTS_SATURATION', payload: value }; break;
+    }
+    if (action) {
+      dispatchSettings(action); // Direct dispatch for final value
+    }
+    setIsPreviewing(false);
   };
   
   const handleTintColorChange = (
@@ -96,6 +112,7 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
+    setIsPreviewing(false); // Update preview after color change
   };
 
   const basicAdjustmentControls = [
@@ -146,8 +163,13 @@ export function AdjustmentsSection() {
         onValueChange={(val) => {
           handleSliderChange(control.id as any, val[0]);
         }}
+        onValueCommit={(val) => {
+          handleSliderCommit(control.id as any, val[0]);
+        }}
+        onPointerDown={() => {
+          if (originalImage) setIsPreviewing(true);
+        }}
         disabled={!originalImage}
-        onValueCommit={() => { /* No action needed on commit for WebGL version */ }}
       />
     </div>
   );
@@ -215,24 +237,32 @@ export function AdjustmentsSection() {
 
   return (
     <div className="space-y-4 w-full max-w-[14rem] mx-auto">
-      <Label className="text-sm font-medium block mb-2">Adjustments</Label>
-      {basicAdjustmentControls.map(control => renderSlider(control))}
+      <div>
+        <Label className="text-sm font-medium block mb-2">Adjustments</Label>
+        {basicAdjustmentControls.map(control => renderSlider(control))}
+      </div>
 
       <Separator className="my-4" />
       
-      <Label className="text-sm font-medium block">Colors</Label>
-      {colorSettingControls.map(control => renderSlider(control))}
+      <div>
+        <Label className="text-sm font-medium block">Colors</Label>
+        {colorSettingControls.map(control => renderSlider(control))}
+      </div>
       
       <Separator className="my-4" />
 
-      <Label className="text-sm font-medium block">Tint</Label>
-      {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation)}
-      {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation)}
+      <div>
+        <Label className="text-sm font-medium block">Tint</Label>
+        {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation)}
+        {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation)}
+      </div>
 
       <Separator className="my-4" />
 
-      <Label className="text-sm font-medium block">Effects</Label>
-      {effectSettingControls.map(control => renderSlider(control))}
+      <div>
+        <Label className="text-sm font-medium block">Effects</Label>
+        {effectSettingControls.map(control => renderSlider(control))}
+      </div>
     </div>
   );
 }

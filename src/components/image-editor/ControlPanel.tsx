@@ -19,7 +19,7 @@ import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // This string will be updated by the AI for versioning
-const CURRENT_VERSION_STRING = "alpha 0.3_webgl.26_grain_stronger"; 
+const CURRENT_VERSION_STRING = "alpha 0.3_webgl.27_slider_throttle"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);

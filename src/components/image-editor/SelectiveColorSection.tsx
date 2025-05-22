@@ -1,13 +1,16 @@
 
 "use client";
 
-import React from 'react';
-import { useImageEditor, SELECTIVE_COLOR_TARGETS, type SelectiveColorTarget } from '@/contexts/ImageEditorContext';
+import React, { useCallback } from 'react';
+import { useImageEditor, SELECTIVE_COLOR_TARGETS, type SelectiveColorTarget, type SettingsAction } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Palette, Droplets, Sun } from 'lucide-react'; // Using generic icons for HSL
+import { Palette, Droplets, Sun } from 'lucide-react';
+import { throttle } from 'lodash';
+
+const THROTTLE_WAIT = 100; // ms
 
 const colorTargetDisplay: Record<SelectiveColorTarget, { name: string, colorClass: string }> = {
   reds: { name: 'Reds', colorClass: 'bg-red-500' },
@@ -21,15 +24,37 @@ const colorTargetDisplay: Record<SelectiveColorTarget, { name: string, colorClas
 };
 
 export function SelectiveColorSection() {
-  const { settings, dispatchSettings, originalImage } = useImageEditor();
+  const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
   const activeTarget = settings.activeSelectiveColorTarget;
   const currentAdjustments = settings.selectiveColors[activeTarget];
 
+  const throttledDispatch = useCallback(
+    throttle((action: SettingsAction) => {
+      dispatchSettings(action);
+    }, THROTTLE_WAIT, { leading: true, trailing: true }),
+    [dispatchSettings]
+  );
+
   const handleTargetChange = (target: SelectiveColorTarget) => {
     dispatchSettings({ type: 'SET_ACTIVE_SELECTIVE_COLOR_TARGET', payload: target });
+    setIsPreviewing(false); // Ensure preview updates if target changes
   };
 
   const handleAdjustmentChange = (
+    type: 'hue' | 'saturation' | 'luminance',
+    value: number
+  ) => {
+    setIsPreviewing(true);
+    throttledDispatch({
+      type: 'SET_SELECTIVE_COLOR_ADJUSTMENT',
+      payload: {
+        target: activeTarget,
+        adjustment: { [type]: value },
+      },
+    });
+  };
+
+  const handleAdjustmentCommit = (
     type: 'hue' | 'saturation' | 'luminance',
     value: number
   ) => {
@@ -40,6 +65,7 @@ export function SelectiveColorSection() {
         adjustment: { [type]: value },
       },
     });
+    setIsPreviewing(false);
   };
 
   const adjustmentControls = [
@@ -80,7 +106,7 @@ export function SelectiveColorSection() {
             </Label>
             <span className="text-xs text-muted-foreground">
               {control.id === 'hue' 
-                ? `${Math.round((control.value ?? 0) * 180)}°` // Displaying relative degrees based on -0.1 to 0.1 range
+                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.1 / 0.5))}°` // Adjusted display for new range
                 : `${Math.round((control.value ?? 0) * 100)}%`}
             </span>
           </div>
@@ -93,8 +119,13 @@ export function SelectiveColorSection() {
             onValueChange={(val) => {
               handleAdjustmentChange(control.id as 'hue' | 'saturation' | 'luminance', val[0]);
             }}
+            onValueCommit={(val) => {
+              handleAdjustmentCommit(control.id as 'hue' | 'saturation' | 'luminance', val[0]);
+            }}
+            onPointerDown={() => {
+              if (originalImage) setIsPreviewing(true);
+            }}
             disabled={!originalImage}
-            onValueCommit={() => { /* No action needed for WebGL */ }}
           />
         </div>
       ))}
