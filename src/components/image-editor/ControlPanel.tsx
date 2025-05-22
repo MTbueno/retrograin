@@ -13,11 +13,12 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-// import { FiltersSection } from './FiltersSection'; // Removed
 import { SelectiveColorSection } from './SelectiveColorSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
+
+const CURRENT_VERSION_STRING = "alpha 0.3_webgl.22_final_touches";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    setAppVersion("alpha 0.3_webgl.21_final_adjustments"); 
+    setAppVersion(CURRENT_VERSION_STRING); 
   }, []);
 
   return (
@@ -48,8 +49,6 @@ export function ControlPanel() {
             <SelectiveColorSection />
             <SidebarSeparator />
             <TransformsSection />
-            {/* <SidebarSeparator /> */}
-            {/* <FiltersSection /> // Removed */}
             <SidebarSeparator /> 
           </SidebarMenu>
         </ScrollArea>

@@ -10,7 +10,7 @@ import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
 
 export function AdjustmentsSection() {
-  const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
+  const { settings, dispatchSettings, originalImage } = useImageEditor();
 
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' | 
@@ -22,7 +22,6 @@ export function AdjustmentsSection() {
           'tintHighlightsIntensity' | 'tintHighlightsSaturation',
     value: number
   ) => {
-    if (originalImage) setIsPreviewing(true);
 
     switch (type) {
       case 'brightness':
@@ -92,7 +91,6 @@ export function AdjustmentsSection() {
         return;
     }
 
-    if (originalImage) setIsPreviewing(true); 
     if (tonalRange === 'shadows') {
       dispatchSettings({ type: 'SET_TINT_SHADOWS_COLOR', payload: color });
     } else if (tonalRange === 'highlights') {
@@ -103,7 +101,7 @@ export function AdjustmentsSection() {
   const basicAdjustmentControls = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.75, max: 1.25, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.75, max: 1.25, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 1.5, step: 0.01 },
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'vibrance', label: 'Vibrance', icon: Brush, value: settings.vibrance, min: -1, max: 1, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
@@ -113,14 +111,14 @@ export function AdjustmentsSection() {
   ];
 
   const colorSettingControls = [
-    { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: 0, max: 360, step: 1 }, 
+    { id: 'hueRotate', label: 'Hue Rotate', icon: Palette, value: settings.hueRotate, min: -180, max: 180, step: 1 }, 
     { id: 'colorTemperature', label: 'Temperature', icon: Thermometer, value: settings.colorTemperature, min: -100, max: 100, step: 1 },
   ];
 
   const effectSettingControls = [
+    { id: 'sharpness', label: 'Sharpness', icon: Maximize2, value: settings.sharpness, min: 0, max: 1, step: 0.01 },
     { id: 'vignetteIntensity', label: 'Vignette', icon: CircleDot, value: settings.vignetteIntensity, min: 0, max: 1, step: 0.01 },
     { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 },
-    { id: 'sharpness', label: 'Sharpness', icon: Maximize2, value: settings.sharpness, min: 0, max: 1, step: 0.01 },
   ];
   
   const renderSlider = (control: any, isIntensitySlider: boolean = false, isSaturationSlider: boolean = false) => (
@@ -144,17 +142,12 @@ export function AdjustmentsSection() {
         min={control.min}
         max={control.max}
         step={control.step}
-        value={[control.value ?? (control.id === 'brightness' || control.id === 'contrast' || control.id === 'saturation' || control.id.includes('Saturation') ? 1 : 0)]}
+        value={[control.value ?? (control.id === 'brightness' || control.id === 'contrast' || control.id === 'saturation' || control.id.includes('Saturation') ? 1 : (control.id === 'vibrance' || control.id === 'exposure' || control.id === 'highlights' || control.id === 'shadows' || control.id === 'whites' || control.id === 'blacks' || control.id === 'sharpness' || control.id === 'hueRotate' || control.id === 'colorTemperature' || control.id.includes('Intensity') ? 0 : 1) )]}
         onValueChange={(val) => {
           handleSliderChange(control.id as any, val[0]);
         }}
         disabled={!originalImage}
-        onPointerDown={() => {
-          if (originalImage) setIsPreviewing(true);
-        }}
-        onValueCommit={() => { 
-          if (originalImage) setIsPreviewing(false);
-        }}
+        onValueCommit={() => { /* No action needed on commit for WebGL version */ }}
       />
     </div>
   );
@@ -186,7 +179,7 @@ export function AdjustmentsSection() {
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 0.25, step: 0.01 // Max intensity changed to 0.25
+        min: 0, max: 0.25, step: 0.01 
       }, true)}
 
       {(intensityValue ?? 0) > 0 && ( 
