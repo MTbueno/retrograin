@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import { useImageEditor } from '@/contexts/ImageEditorContext';
+import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
 
 // Vertex shader program
@@ -20,29 +20,81 @@ const vsSource = `
 const fsSource = `
   precision mediump float;
   varying highp vec2 v_textureCoord;
+
   uniform sampler2D u_sampler;
-  uniform float u_brightness;
-  uniform float u_contrast;
-  uniform float u_saturation;
-  uniform float u_exposure;
+
+  uniform float u_brightness;    // 1.0 default, range 0.75 to 1.25
+  uniform float u_contrast;      // 1.0 default, range 0.5 to 1.5
+  uniform float u_saturation;    // 1.0 default, range 0 to 2
+  uniform float u_vibrance;      // 0.0 default, range -1 to 1
+  uniform float u_exposure;      // 0.0 default, range -0.5 to 0.5
+  uniform float u_highlights;    // 0.0 default, range -1 to 1
+  uniform float u_shadows;       // 0.0 default, range -1 to 1
+  uniform float u_whites;        // 0.0 default, range -1 to 1
+  uniform float u_blacks;        // 0.0 default, range -1 to 1
 
   void main(void) {
     vec4 textureColor = texture2D(u_sampler, v_textureCoord);
-    
-    // Apply brightness
-    vec3 color = textureColor.rgb * u_brightness;
-    
-    // Apply contrast
+    vec3 color = textureColor.rgb;
+
+    // 1. Brightness
+    color *= u_brightness;
+
+    // 2. Contrast
     color = (color - 0.5) * u_contrast + 0.5;
+
+    // 3. Saturation
+    float luma_sat = dot(color, vec3(0.299, 0.587, 0.114));
+    vec3 grayscale_sat = vec3(luma_sat);
+    color = mix(grayscale_sat, color, u_saturation);
+
+    // 4. Vibrance
+    // For positive u_vibrance, boosts saturation of less saturated colors more.
+    // For negative u_vibrance, acts as a general desaturator.
+    float luma_vib = dot(color, vec3(0.299, 0.587, 0.114));
+    float max_comp_vib = max(color.r, max(color.g, color.b));
+    float min_comp_vib = min(color.r, min(color.g, color.b));
+    float current_pixel_saturation = max_comp_vib - min_comp_vib;
     
-    // Apply saturation
-    float luma = dot(color, vec3(0.299, 0.587, 0.114));
-    vec3 grayscale = vec3(luma);
-    color = mix(grayscale, color, u_saturation);
+    if (u_vibrance > 0.0) {
+      float vibrance_boost_factor = u_vibrance * (1.5 * (1.0 - smoothstep(0.1, 0.9, current_pixel_saturation)));
+      color = mix(vec3(luma_vib), color, 1.0 + vibrance_boost_factor);
+    } else {
+      // Negative vibrance: desaturate (u_vibrance is negative, so 1.0 + u_vibrance reduces the mix towards grayscale)
+      color = mix(vec3(luma_vib), color, 1.0 + u_vibrance); 
+    }
+    
+    // 5. Exposure
+    color *= pow(2.0, u_exposure);
 
-    // Apply exposure
-    color = color * pow(2.0, u_exposure);
+    // 6. Shadows & Highlights (simple additive approach)
+    // We use a luma calculation to determine how much to affect shadows/highlights
+    float current_luma_sh_hl = dot(color, vec3(0.2126, 0.7152, 0.0722)); // Standard luma coefficients
+    
+    // Shadows: u_shadows > 0 lifts shadows, u_shadows < 0 darkens them
+    // smoothstep creates a curve so the effect is stronger in darker areas and fades out in lighter areas
+    float shadow_effect_factor = (1.0 - smoothstep(0.0, 0.5, current_luma_sh_hl)); // Affects values from 0.0 to 0.5 luma
+    color += shadow_effect_factor * u_shadows * 0.3; // Scaled effect
 
+    // Highlights: u_highlights > 0 boosts highlights, u_highlights < 0 reduces them
+    // smoothstep creates a curve so the effect is stronger in lighter areas and fades out in darker areas
+    float highlight_effect_factor = smoothstep(0.5, 1.0, current_luma_sh_hl); // Affects values from 0.5 to 1.0 luma
+    color += highlight_effect_factor * u_highlights * 0.3; // Scaled effect
+
+    // 7. Levels (Blacks & Whites)
+    // u_blacks > 0 lifts black point (makes blacks grayer)
+    // u_blacks < 0 crushes black point (makes blacks darker)
+    // u_whites > 0 pushes white point further (makes whites brighter, can clip)
+    // u_whites < 0 pulls white point in (darkens whites, can recover detail)
+    float black_point_adjust = u_blacks * 0.25; 
+    float white_point_adjust = 1.0 - (u_whites * 0.25); // Subtract because u_whites < 0 should increase the effective white point range
+    
+    // Ensure white_point_adjust is always greater than black_point_adjust to avoid division by zero or negative results
+    white_point_adjust = max(white_point_adjust, black_point_adjust + 0.001); 
+    
+    color = (color - black_point_adjust) / (white_point_adjust - black_point_adjust);
+
+    // 8. Final Clamp
     gl_FragColor = vec4(clamp(color, 0.0, 1.0), textureColor.a);
   }
 `;
@@ -58,7 +110,12 @@ interface ProgramInfo {
     brightness: WebGLUniformLocation | null;
     contrast: WebGLUniformLocation | null;
     saturation: WebGLUniformLocation | null;
+    vibrance: WebGLUniformLocation | null;
     exposure: WebGLUniformLocation | null;
+    highlights: WebGLUniformLocation | null;
+    shadows: WebGLUniformLocation | null;
+    whites: WebGLUniformLocation | null;
+    blacks: WebGLUniformLocation | null;
   };
 }
 
@@ -82,7 +139,6 @@ export function ImageCanvas() {
 
   const checkGLError = useCallback((glContext: WebGLRenderingContext | null, operation: string) => {
     if (!glContext) {
-      console.warn(`WebGL context not available for ${operation}`);
       return true;
     }
     let errorFound = false;
@@ -98,7 +154,7 @@ export function ImageCanvas() {
         case glContext.CONTEXT_LOST_WEBGL: errorMsg = "CONTEXT_LOST_WEBGL"; break;
       }
       console.error(`WebGL Error (${operation}): ${errorMsg} (Code: ${error})`);
-      error = glContext.getError(); // Check for more errors
+      error = glContext.getError();
     }
     return errorFound;
   }, []);
@@ -125,13 +181,17 @@ export function ImageCanvas() {
     const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
 
     if (!vertexShader || !fragmentShader) {
-      console.error("Failed to load shaders for program.");
+      console.error("Failed to load/compile shaders for program.");
+      if (vertexShader) gl.deleteShader(vertexShader);
+      if (fragmentShader) gl.deleteShader(fragmentShader);
       return null;
     }
 
     const shaderProgram = gl.createProgram();
     if (!shaderProgram) {
       console.error("Failed to create shader program.");
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
       return null;
     }
     gl.attachShader(shaderProgram, vertexShader);
@@ -141,11 +201,12 @@ export function ImageCanvas() {
     if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
       console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
       gl.deleteProgram(shaderProgram);
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
       return null;
     }
-    console.log("Shader program linked successfully.");
 
-    const programInfo: ProgramInfo = {
+    const progInfo: ProgramInfo = {
       program: shaderProgram,
       attribLocations: {
         vertexPosition: gl.getAttribLocation(shaderProgram, 'a_position'),
@@ -156,24 +217,21 @@ export function ImageCanvas() {
         brightness: gl.getUniformLocation(shaderProgram, 'u_brightness'),
         contrast: gl.getUniformLocation(shaderProgram, 'u_contrast'),
         saturation: gl.getUniformLocation(shaderProgram, 'u_saturation'),
+        vibrance: gl.getUniformLocation(shaderProgram, 'u_vibrance'),
         exposure: gl.getUniformLocation(shaderProgram, 'u_exposure'),
+        highlights: gl.getUniformLocation(shaderProgram, 'u_highlights'),
+        shadows: gl.getUniformLocation(shaderProgram, 'u_shadows'),
+        whites: gl.getUniformLocation(shaderProgram, 'u_whites'),
+        blacks: gl.getUniformLocation(shaderProgram, 'u_blacks'),
       },
     };
 
-    if (programInfo.attribLocations.vertexPosition === -1) console.error("Attrib a_position not found in shader program.");
-    // else console.log("Attrib a_position found at location:", programInfo.attribLocations.vertexPosition);
-    if (programInfo.attribLocations.textureCoord === -1) console.error("Attrib a_texCoord not found in shader program.");
-    // else console.log("Attrib a_texCoord found at location:", programInfo.attribLocations.textureCoord);
-    if (programInfo.uniformLocations.sampler === null) console.error("Uniform u_sampler not found in shader program.");
-    // else console.log("Uniform u_sampler found at location:", programInfo.uniformLocations.sampler);
-    if (programInfo.uniformLocations.brightness === null) console.warn("Uniform u_brightness not found.");
-    // else console.log("Uniform u_brightness found at location:", programInfo.uniformLocations.brightness);
-    if (programInfo.uniformLocations.contrast === null) console.warn("Uniform u_contrast not found.");
-    // else console.log("Uniform u_contrast found at location:", programInfo.uniformLocations.contrast);
-    if (programInfo.uniformLocations.saturation === null) console.warn("Uniform u_saturation not found.");
-    if (programInfo.uniformLocations.exposure === null) console.warn("Uniform u_exposure not found.");
+    if (progInfo.attribLocations.vertexPosition === -1) console.warn("Attrib a_position not found.");
+    if (progInfo.attribLocations.textureCoord === -1) console.warn("Attrib a_texCoord not found.");
+    if (progInfo.uniformLocations.sampler === null) console.warn("Uniform u_sampler not found.");
+    // Optional: Add more warnings for other uniforms if needed for debugging.
     
-    return programInfo;
+    return progInfo;
   }, [loadShader]);
 
   const initBuffers = useCallback((gl: WebGLRenderingContext): Buffers | null => {
@@ -192,10 +250,9 @@ export function ImageCanvas() {
       return null;
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
-    const textureCoordinates = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]; // Standard UV mapping
+    const textureCoordinates = [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0]; 
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
     
-    // console.log("Buffers initialized.");
     return { position: positionBuffer, textureCoord: textureCoordBuffer };
   }, []);
 
@@ -214,16 +271,13 @@ export function ImageCanvas() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     if (checkGLError(gl, "loadTexture - after texParameteri")) return null;
 
-    // WebGL expects images with (0,0) at bottom-left, HTML images are top-left.
-    // Flipping Y during texture upload corrects this.
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); 
     if (checkGLError(gl, "loadTexture - after pixelStorei UNPACK_FLIP_Y_WEBGL")) return null;
     
     try {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-      // console.log("Texture image uploaded to GPU via texImage2D.");
     } catch (e) {
-      console.error("Error during texImage2D:", e);
+      console.error("Error during texImage2D:", e, "Image src:", image.src.substring(0,100));
       gl.deleteTexture(texture);
       return null;
     }
@@ -235,7 +289,6 @@ export function ImageCanvas() {
     }
     
     gl.bindTexture(gl.TEXTURE_2D, null); 
-    // console.log("Texture loaded successfully into WebGL texture object:", texture);
     return texture;
   }, [checkGLError]);
 
@@ -247,46 +300,33 @@ export function ImageCanvas() {
     const currentTexture = textureRef.current;
 
     if (!gl || !programInfo || !currentBuffers || !canvas) {
-      // console.warn("drawScene: Missing WebGL essentials. Skipping draw.");
       return;
     }
-    // if (checkGLError(gl, "drawScene - start")) return;
 
     let canvasPhysicalWidth = 300; 
     let canvasPhysicalHeight = 150;
 
     if (originalImage) {
-        const imageContentWidth = originalImage.naturalWidth / settings.cropZoom;
-        const imageContentHeight = originalImage.naturalHeight / settings.cropZoom;
+        let imgWidth = originalImage.naturalWidth / settings.cropZoom; // Consider cropZoom for source
+        let imgHeight = originalImage.naturalHeight / settings.cropZoom;
         
-        let targetWidth = imageContentWidth;
-        let targetHeight = imageContentHeight;
-        let contentAspectRatio = imageContentWidth / imageContentHeight;
+        // The WebGL quad always fills the viewport; aspect ratio matching is done by adjusting viewport or texture coords.
+        // For simplicity, we size the canvas drawing buffer to match the (cropped) image's aspect ratio, capped.
+        let contentAspectRatio = imgWidth / imgHeight;
 
-        const isSideways = settings.rotation === 90 || settings.rotation === 270;
-        if (isSideways) {
-            contentAspectRatio = imageContentHeight / imageContentWidth; 
-            targetWidth = imageContentHeight;
-            targetHeight = imageContentWidth;
-        }
-        
         if (contentAspectRatio > 1) { 
-            if (targetWidth > (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO)) {
-                targetWidth = contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO;
-                targetHeight = targetWidth / contentAspectRatio;
-            }
+            canvasPhysicalWidth = Math.min(imgWidth, (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO));
+            canvasPhysicalHeight = canvasPhysicalWidth / contentAspectRatio;
         } else { 
-            if (targetHeight > MAX_PHYSICAL_HEIGHT_CAP) {
-                targetHeight = MAX_PHYSICAL_HEIGHT_CAP;
-                targetWidth = targetHeight * contentAspectRatio;
+            canvasPhysicalHeight = Math.min(imgHeight, MAX_PHYSICAL_HEIGHT_CAP);
+            canvasPhysicalWidth = canvasPhysicalHeight * contentAspectRatio;
+            if (canvasPhysicalWidth > MAX_WIDTH_STANDARD_RATIO) {
+                canvasPhysicalWidth = MAX_WIDTH_STANDARD_RATIO;
+                canvasPhysicalHeight = canvasPhysicalWidth / contentAspectRatio;
             }
-             if (targetWidth > MAX_WIDTH_STANDARD_RATIO) { 
-                 targetWidth = MAX_WIDTH_STANDARD_RATIO;
-                 targetHeight = targetWidth / contentAspectRatio;
-             }
         }
-        canvasPhysicalWidth = Math.round(targetWidth > 0 ? targetWidth : 1);
-        canvasPhysicalHeight = Math.round(targetHeight > 0 ? targetHeight : 1);
+        canvasPhysicalWidth = Math.max(1, Math.round(canvasPhysicalWidth));
+        canvasPhysicalHeight = Math.max(1, Math.round(canvasPhysicalHeight));
     }
     
     if (canvas.width !== canvasPhysicalWidth || canvas.height !== canvasPhysicalHeight) {
@@ -295,57 +335,48 @@ export function ImageCanvas() {
     }
     
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    // if (checkGLError(gl, "drawScene - after viewport")) return;
+    if (checkGLError(gl, "drawScene - after viewport")) return;
 
     gl.clearColor(0.188, 0.188, 0.188, 1.0); 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    // if (checkGLError(gl, "drawScene - after clear")) return;
+    if (checkGLError(gl, "drawScene - after clear")) return;
 
     if (!originalImage || !currentTexture) {
-        // console.warn("drawScene: No original image or texture to draw. Canvas cleared.");
         return;
     }
 
     gl.useProgram(programInfo.program);
-    // if (checkGLError(gl, "drawScene - after useProgram")) return;
+    if (checkGLError(gl, "drawScene - after useProgram")) return;
 
     gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffers.position);
     gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
-    // if (checkGLError(gl, "drawScene - after position attribute setup")) return;
 
     gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffers.textureCoord);
     gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
-    // if (checkGLError(gl, "drawScene - after texCoord attribute setup")) return;
 
     gl.activeTexture(gl.TEXTURE0);
-    // if (checkGLError(gl, "drawScene - after activeTexture")) return;
     gl.bindTexture(gl.TEXTURE_2D, currentTexture);
-    // if (checkGLError(gl, "drawScene - after bindTexture (currentTexture)")) return;
     
-    if (programInfo.uniformLocations.sampler !== null) {
+    if (programInfo.uniformLocations.sampler) {
         gl.uniform1i(programInfo.uniformLocations.sampler, 0);
-    } else { console.warn("drawScene: sampler uniform location is null."); }
+    }
 
-    if (programInfo.uniformLocations.brightness !== null) {
-      gl.uniform1f(programInfo.uniformLocations.brightness, settings.brightness);
-    } else { console.warn("drawScene: brightness uniform location is null."); }
-
-    if (programInfo.uniformLocations.contrast !== null) {
-      gl.uniform1f(programInfo.uniformLocations.contrast, settings.contrast);
-    } else { console.warn("drawScene: contrast uniform location is null."); }
-
-    if (programInfo.uniformLocations.saturation !== null) {
-      gl.uniform1f(programInfo.uniformLocations.saturation, settings.saturation);
-    } else { console.warn("drawScene: saturation uniform location is null."); }
-
-    if (programInfo.uniformLocations.exposure !== null) {
-      gl.uniform1f(programInfo.uniformLocations.exposure, settings.exposure);
-    } else { console.warn("drawScene: exposure uniform location is null."); }
+    // Pass settings to shaders
+    if (programInfo.uniformLocations.brightness) gl.uniform1f(programInfo.uniformLocations.brightness, settings.brightness);
+    if (programInfo.uniformLocations.contrast) gl.uniform1f(programInfo.uniformLocations.contrast, settings.contrast);
+    if (programInfo.uniformLocations.saturation) gl.uniform1f(programInfo.uniformLocations.saturation, settings.saturation);
+    if (programInfo.uniformLocations.vibrance) gl.uniform1f(programInfo.uniformLocations.vibrance, settings.vibrance);
+    if (programInfo.uniformLocations.exposure) gl.uniform1f(programInfo.uniformLocations.exposure, settings.exposure);
+    if (programInfo.uniformLocations.highlights) gl.uniform1f(programInfo.uniformLocations.highlights, settings.highlights);
+    if (programInfo.uniformLocations.shadows) gl.uniform1f(programInfo.uniformLocations.shadows, settings.shadows);
+    if (programInfo.uniformLocations.whites) gl.uniform1f(programInfo.uniformLocations.whites, settings.whites);
+    if (programInfo.uniformLocations.blacks) gl.uniform1f(programInfo.uniformLocations.blacks, settings.blacks);
     
+    if (checkGLError(gl, "drawScene - before drawArrays after setting uniforms")) return;
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); 
-    // if (checkGLError(gl, "drawScene - after drawArrays")) return;
+    if (checkGLError(gl, "drawScene - after drawArrays")) return;
 
   }, [originalImage, canvasRef, settings, checkGLError]);
 
@@ -363,14 +394,11 @@ export function ImageCanvas() {
         return;
       }
       glRef.current = context;
-      // console.log("WebGL context successfully stored in glRef.");
-      // if(checkGLError(glRef.current, "Initial context get")) return;
 
       const pInfo = initShaderProgram(glRef.current);
       if (pInfo) {
         programInfoRef.current = pInfo;
       } else {
-        console.error("Failed to initialize shader program. Aborting WebGL setup.");
         glRef.current = null; 
         return;
       }
@@ -379,18 +407,16 @@ export function ImageCanvas() {
       if (bInfo) {
         buffersRef.current = bInfo;
       } else {
-        console.error("Failed to initialize WebGL buffers. Aborting WebGL setup.");
         glRef.current = null; 
         programInfoRef.current = null;
         return;
       }
       isInitializedRef.current = true; 
-      // console.log("ImageCanvas: Core WebGL initialized (program and buffers).");
       
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       animationFrameIdRef.current = requestAnimationFrame(drawScene);
     }
-  }, [canvasRef, initShaderProgram, initBuffers, drawScene, checkGLError]);
+  }, [canvasRef, initShaderProgram, initBuffers, drawScene]);
 
 
   useEffect(() => {
@@ -406,36 +432,30 @@ export function ImageCanvas() {
         const processImageAndLoadTexture = () => {
             if (textureRef.current) {
                 gl.deleteTexture(textureRef.current);
-                // checkGLError(gl, "delete old texture");
                 textureRef.current = null; 
             }
-            // console.log("Texture Effect: Attempting to load new texture from originalImage...");
             const newTexture = loadTexture(gl, imageElement);
             if (newTexture) {
                 textureRef.current = newTexture;
-                // console.log("Texture Effect: New texture loaded, requesting drawScene.");
                 if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
                 animationFrameIdRef.current = requestAnimationFrame(drawScene);
             } else {
-                console.error("Texture Effect: Failed to load new texture from originalImage. Texture will be null.");
-                textureRef.current = null;
-                 if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
+                textureRef.current = null; 
+                if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
                 animationFrameIdRef.current = requestAnimationFrame(drawScene); 
             }
         };
 
-        if (imageElement.complete) { 
+        if (imageElement.complete && imageElement.naturalWidth > 0) {
             processImageAndLoadTexture();
         } else {
-            // console.log("Texture Effect: OriginalImage is not complete, adding onload listener.");
             const handleLoad = () => {
-                // console.log("Texture Effect: OriginalImage onload event triggered.");
                 processImageAndLoadTexture();
                 imageElement.removeEventListener('load', handleLoad);
                 imageElement.removeEventListener('error', handleError);
             };
             const handleError = () => {
-                console.error("Texture Effect: Error loading originalImage for WebGL texture.");
+                console.error("Texture Effect: Error loading originalImage for WebGL texture. Src:", imageElement.src.substring(0,100));
                 imageElement.removeEventListener('load', handleLoad);
                 imageElement.removeEventListener('error', handleError);
                 if (textureRef.current) {
@@ -447,23 +467,19 @@ export function ImageCanvas() {
             };
             imageElement.addEventListener('load', handleLoad);
             imageElement.addEventListener('error', handleError);
-             // It's possible the image loads between the .complete check and addEventListener
-            if (imageElement.complete) {
-                handleLoad(); // Call handleLoad if already complete by now
+            if (imageElement.complete && imageElement.naturalWidth > 0) {
+                 handleLoad(); 
             }
         }
-
     } else { 
       if (textureRef.current) {
         gl.deleteTexture(textureRef.current);
-        // console.log("Texture Effect: Deleted old texture (originalImage is null).");
-        // checkGLError(gl, "delete old texture in else branch");
         textureRef.current = null;
       }
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       animationFrameIdRef.current = requestAnimationFrame(drawScene); 
     }
-  }, [originalImage, loadTexture, drawScene, checkGLError, isInitializedRef]);
+  }, [originalImage, loadTexture, drawScene, isInitializedRef]);
 
 
   useEffect(() => {
@@ -511,7 +527,6 @@ export function ImageCanvas() {
       buffersRef.current = null;
       textureRef.current = null;
       isInitializedRef.current = false;
-      // console.log("WebGL resources cleaned up.");
     };
   }, []);
 
