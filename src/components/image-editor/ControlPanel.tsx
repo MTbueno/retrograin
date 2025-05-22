@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.revert.fix1"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.5"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -26,7 +26,9 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    setAppVersion(CURRENT_PROJECT_VERSION);
+    // Define a constant string for the version to avoid hydration issues with dynamic values like Date.now()
+    const staticVersionString = CURRENT_PROJECT_VERSION; 
+    setAppVersion(staticVersionString);
   }, []);
 
   return (
@@ -60,4 +62,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
