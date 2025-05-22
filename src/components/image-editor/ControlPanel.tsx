@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.14_crop_pan"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.14_crop_pan_fix1"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -60,6 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-
-    
