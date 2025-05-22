@@ -28,7 +28,7 @@ export function TransformsSection() {
     value: number
   ) => {
     if (!originalImage) return;
-    setIsPreviewing(true); 
+    if (setIsPreviewing) setIsPreviewing(true); 
     let action: SettingsAction | null = null;
     if (type === 'cropZoom') {
       action = { type: 'SET_CROP_ZOOM', payload: value };
@@ -58,19 +58,19 @@ export function TransformsSection() {
     if (action) {
       dispatchSettings(action); 
     }
-    setIsPreviewing(false);
+    if (setIsPreviewing) setIsPreviewing(false);
   };
 
   const handleTransformButtonClick = (actionType: 'ROTATE_CW' | 'ROTATE_CCW' | 'FLIP_HORIZONTAL' | 'FLIP_VERTICAL') => {
     if (!originalImage) return;
     dispatchSettings({ type: actionType });
-    setIsPreviewing(false);
+    if (setIsPreviewing) setIsPreviewing(false);
   };
 
   const handleResetTransforms = () => {
     if (!originalImage) return;
     dispatchSettings({ type: 'RESET_CROP_AND_TRANSFORMS' });
-    setIsPreviewing(false); 
+    if (setIsPreviewing) setIsPreviewing(false); 
   };
   
   const transformControls = [
@@ -88,7 +88,6 @@ export function TransformsSection() {
       : (control.id === 'cropZoom' ? 1 : 0);
     
     const displayText = (currentValue ?? 0).toFixed(2);
-
 
     return (
       <div key={control.id} className="space-y-2">
@@ -111,7 +110,7 @@ export function TransformsSection() {
           onValueCommit={(val) => handleTransformSliderCommit(control.id as any, val[0])}
           onPointerDown={() => {
             if (!originalImage) return;
-            setIsPreviewing(true);
+            if (setIsPreviewing) setIsPreviewing(true);
           }}
           disabled={!originalImage}
         />

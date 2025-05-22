@@ -34,7 +34,7 @@ export function AdjustmentsSection() {
     value: number
   ) => {
     if (!originalImage) return;
-    setIsPreviewing(true);
+    if (setIsPreviewing) setIsPreviewing(true);
     let action: SettingsAction | null = null;
     switch (type) {
       case 'brightness': action = { type: 'SET_BRIGHTNESS', payload: value }; break;
@@ -49,7 +49,7 @@ export function AdjustmentsSection() {
       case 'hueRotate': action = { type: 'SET_HUE_ROTATE', payload: value }; break;
       case 'vignetteIntensity': action = { type: 'SET_VIGNETTE_INTENSITY', payload: value }; break;
       case 'grainIntensity': action = { type: 'SET_GRAIN_INTENSITY', payload: value }; break;
-      // Sharpness removed
+      case 'sharpness': action = { type: 'SET_SHARPNESS', payload: value }; break;
       case 'colorTemperature': action = { type: 'SET_COLOR_TEMPERATURE', payload: value }; break;
       case 'tintShadowsIntensity': action = { type: 'SET_TINT_SHADOWS_INTENSITY', payload: value }; break;
       case 'tintShadowsSaturation': action = { type: 'SET_TINT_SHADOWS_SATURATION', payload: value }; break;
@@ -65,10 +65,10 @@ export function AdjustmentsSection() {
     type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' |
           'highlights' | 'shadows' | 'whites' | 'blacks' |
           'hueRotate' |
-          'vignetteIntensity' | 'grainIntensity' |
+          'vignetteIntensity' | 'grainIntensity' | 'sharpness' |
           'colorTemperature' |
           'tintShadowsIntensity' | 'tintShadowsSaturation' |
-          'tintHighlightsIntensity' | 'tintHighlightsSaturation' | 'sharpness',
+          'tintHighlightsIntensity' | 'tintHighlightsSaturation',
     value: number
   ) => {
     if (!originalImage) return;
@@ -86,7 +86,7 @@ export function AdjustmentsSection() {
       case 'hueRotate': action = { type: 'SET_HUE_ROTATE', payload: value }; break;
       case 'vignetteIntensity': action = { type: 'SET_VIGNETTE_INTENSITY', payload: value }; break;
       case 'grainIntensity': action = { type: 'SET_GRAIN_INTENSITY', payload: value }; break;
-      // Sharpness removed
+      case 'sharpness': action = { type: 'SET_SHARPNESS', payload: value }; break;
       case 'colorTemperature': action = { type: 'SET_COLOR_TEMPERATURE', payload: value }; break;
       case 'tintShadowsIntensity': action = { type: 'SET_TINT_SHADOWS_INTENSITY', payload: value }; break;
       case 'tintShadowsSaturation': action = { type: 'SET_TINT_SHADOWS_SATURATION', payload: value }; break;
@@ -96,7 +96,7 @@ export function AdjustmentsSection() {
     if (action) {
       dispatchSettings(action); // Direct dispatch for final value
     }
-    setIsPreviewing(false);
+    if (setIsPreviewing) setIsPreviewing(false);
   };
   
   const handleTintColorChange = (
@@ -117,13 +117,13 @@ export function AdjustmentsSection() {
     }
     
     if(action) dispatchSettings(action);
-    setIsPreviewing(false);
+    if (setIsPreviewing) setIsPreviewing(false);
   };
 
   const basicAdjustmentControls = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.75, max: 1.25, step: 0.01 },
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.75, max: 1.25, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 1.5, step: 0.01 }, // Max changed to 1.5
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'vibrance', label: 'Vibrance', icon: Brush, value: settings.vibrance, min: -1, max: 1, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
@@ -173,7 +173,7 @@ export function AdjustmentsSection() {
         }}
         onPointerDown={() => {
           if (!originalImage) return;
-          setIsPreviewing(true);
+          if (setIsPreviewing) setIsPreviewing(true);
         }}
         disabled={!originalImage}
       />
@@ -207,10 +207,10 @@ export function AdjustmentsSection() {
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 0.25, step: 0.01 // Max changed to 0.25
+        min: 0, max: 0.25, step: 0.01
       }, true)}
 
-      {(intensityValue ?? 0) > 0.001 && ( // Check against a small epsilon
+      {(intensityValue ?? 0) > 0.001 && ( 
         <div className="space-y-1.5 pl-6"> 
           <div className="flex items-center space-x-2">
             <Label htmlFor={colorControlId} className="text-xs text-muted-foreground shrink-0">
@@ -229,7 +229,7 @@ export function AdjustmentsSection() {
             className="h-4" 
             onPointerUp={() => { 
               if (!originalImage) return;
-              setIsPreviewing(false);
+              if (setIsPreviewing) setIsPreviewing(false);
             }}
           />
           {renderSlider({
@@ -271,8 +271,7 @@ export function AdjustmentsSection() {
 
       <div>
         <Label className="text-sm font-medium block mb-2">Effects</Label>
-        {/* Sharpness control removed from here */}
-        {effectSettingControls.filter(c => c.id !== 'sharpness').map(control => renderSlider(control))}
+        {effectSettingControls.map(control => renderSlider(control))}
       </div>
     </div>
   );

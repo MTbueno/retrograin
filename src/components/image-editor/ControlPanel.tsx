@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_VERSION_STRING = "alpha 0.3_webgl.27_slider_throttle_fix"; 
+const CURRENT_VERSION_STRING = "alpha 0.3_webgl.27_slider_throttle_fix2"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
