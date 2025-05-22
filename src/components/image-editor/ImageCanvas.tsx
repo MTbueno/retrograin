@@ -4,7 +4,6 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { useImageEditor, type ImageSettings } from '@/contexts/ImageEditorContext';
 import { Card } from '@/components/ui/card';
-import { hexToRgbNormalizedArray } from '@/lib/colorUtils';
 
 // Vertex shader program
 const vsSource = `
@@ -12,32 +11,42 @@ const vsSource = `
   attribute vec2 a_texCoord;
 
   uniform float u_rotationAngle; // 0.0, 1.5708 (PI/2), 3.14159 (PI), 4.71239 (3PI/2)
-  uniform vec2 u_scale;          // (scaleX, scaleY)
+  uniform vec2 u_scale;          // (scaleX, scaleY) for flip
+  uniform vec2 u_crop_tex_scale; // Scale for texture coordinates (zoom)
+  uniform vec2 u_crop_tex_offset; // Offset for texture coordinates (pan)
+
 
   varying highp vec2 v_textureCoord;
 
   void main(void) {
-    gl_Position = a_position; // Posição do vértice no clip space (sempre um quad cobrindo a tela)
+    gl_Position = a_position;
 
-    // Transforma as coordenadas da textura
     vec2 texCoord = a_texCoord;
-    texCoord -= 0.5; // Mover origem para o centro da textura (0,0)
-    
-    // Aplicar escala (flip)
-    texCoord *= u_scale;
-    
-    // Aplicar rotação
-    // A matriz de rotação para coordenadas de textura é a transposta da matriz de rotação para vértices
-    // ou, de forma equivalente, usar o ângulo negativo.
-    // Se u_rotationAngle é o ângulo desejado para a imagem (ex: PI/2 para 90 graus CW),
-    // precisamos rodar as texCoords por -u_rotationAngle para obter esse efeito visual.
-    float s = sin(-u_rotationAngle); // Usar ângulo negativo para tex coords
-    float c = cos(-u_rotationAngle); 
-    mat2 rotationMatrix = mat2(c, -s, s, c); // Matriz de rotação padrão (roda CCW)
+    texCoord -= 0.5; // Center to origin 0,0
+
+    // Apply transforms in order: scale (flip), rotate (90 deg), crop_scale (zoom), crop_offset (pan)
+    texCoord *= u_scale; // Apply flip
+
+    // Apply 90/180/270 degree rotation
+    // Note: For texture coordinates, to rotate the image clockwise, we rotate the texture coordinates counter-clockwise.
+    // The shader currently has (c, s, -s, c) which is CCW for vertices. 
+    // For texture coordinates, this means image will rotate CCW.
+    // To rotate image CW, tex coords should rotate CCW with angle, or CW with -angle.
+    // If u_rotationAngle is positive for CW image rotation, tex coords need to rotate by -u_rotationAngle.
+    float angleToUse = u_rotationAngle; // Let's assume u_rotationAngle is correctly set for tex coord rotation
+    float s = sin(angleToUse);
+    float c = cos(angleToUse);
+    mat2 rotationMatrix = mat2(c, -s, s, c); // Standard CCW rotation matrix for coordinates
     
     texCoord = rotationMatrix * texCoord;
+
+    // Apply zoom (scale texture coordinates)
+    texCoord *= u_crop_tex_scale;
+
+    // Apply pan (offset texture coordinates)
+    texCoord += u_crop_tex_offset;
     
-    texCoord += 0.5; // Mover origem de volta para o canto inferior esquerdo [0,1]
+    texCoord += 0.5; // Move back to 0,1 range
     v_textureCoord = texCoord;
   }
 `;
@@ -104,7 +113,7 @@ const fsSource = `
 
   // Helper: Pseudo-random generator for grain
   float random(vec2 st) {
-      return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123 + u_time);
+      return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123 + u_time * 0.01);
   }
 
 
@@ -145,13 +154,13 @@ const fsSource = `
     color = clamp(color, 0.0, 1.0); 
 
     // 6. Shadows & Highlights
-    float luma_sh_hl_initial = dot(color, vec3(0.2126, 0.7152, 0.0722)); // Luma before these adjustments
+    float luma_sh_hl_initial = dot(color, vec3(0.2126, 0.7152, 0.0722));
     if (u_shadows != 0.0) {
         color += u_shadows * 0.25 * (1.0 - smoothstep(0.0, 0.5, luma_sh_hl_initial)); 
     }
     color = clamp(color, 0.0, 1.0); 
     if (u_highlights != 0.0) {
-        float luma_sh_hl_after_shadows = dot(color, vec3(0.2126, 0.7152, 0.0722)); // Re-evaluate luma if shadows changed it
+        float luma_sh_hl_after_shadows = dot(color, vec3(0.2126, 0.7152, 0.0722));
         color += u_highlights * 0.25 * smoothstep(0.5, 1.0, luma_sh_hl_after_shadows);
     }
     color = clamp(color, 0.0, 1.0);
@@ -165,18 +174,17 @@ const fsSource = `
 
     // --- Color Adjustments ---
     // 8. Hue Rotation
-    if (u_hueValue != 0.0) { // u_hueValue is 0 to 1
+    if (u_hueValue != 0.0) { 
         vec3 hsv = rgbToHsv(color);
         hsv.x = mod(hsv.x + u_hueValue, 1.0);
         color = hsvToRgb(hsv);
     }
 
     // 9. Color Temperature
-    if (u_temperatureShift != 0.0) { // u_temperatureShift is -0.5 to 0.5
+    if (u_temperatureShift != 0.0) { 
         float temp_strength = u_temperatureShift * 0.3; 
         color.r += temp_strength;
-        color.b -= temp_strength; // If temp_strength is positive (warm), R increases, B decreases.
-                                // If temp_strength is negative (cool), R decreases, B increases.
+        color.b -= temp_strength;
         color = clamp(color, 0.0, 1.0);
     }
 
@@ -208,8 +216,8 @@ const fsSource = `
 
     // 12. Grain
     if (u_grainIntensity > 0.0) {
-        vec2 grainCoord = (v_textureCoord * u_resolution.xy / u_resolution.y) * 2.0; // Scale coordinates for finer grain
-        float noise = (random(grainCoord) - 0.5) * 0.20; // Amplitude of grain
+        vec2 grainCoord = (v_textureCoord * u_resolution.xy / u_resolution.y) * 2.0; 
+        float noise = (random(grainCoord) - 0.5) * 0.20; 
         color.rgb += noise * u_grainIntensity;
     }
     
@@ -247,7 +255,9 @@ interface ProgramInfo {
     time: WebGLUniformLocation | null;
     resolution: WebGLUniformLocation | null;
     rotationAngle: WebGLUniformLocation | null; 
-    scale: WebGLUniformLocation | null;         
+    scale: WebGLUniformLocation | null;   
+    cropTexScale: WebGLUniformLocation | null;     // New
+    cropTexOffset: WebGLUniformLocation | null;    // New
   };
 }
 
@@ -261,7 +271,7 @@ const MAX_WIDTH_WIDE_RATIO = 960;
 const MAX_PHYSICAL_HEIGHT_CAP = 1000;
 
 export function ImageCanvas() {
-  const { originalImage, settings, canvasRef, isPreviewing } = useImageEditor();
+  const { originalImage, settings, canvasRef, isPreviewing, hexToRgbNormalizedArray } = useImageEditor();
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programInfoRef = useRef<ProgramInfo | null>(null);
   const buffersRef = useRef<Buffers | null>(null);
@@ -302,8 +312,7 @@ export function ImageCanvas() {
     gl.compileShader(shader);
 
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      const errorLog = gl.getShaderInfoLog(shader);
-      console.error(`An error occurred compiling the shader (${type === gl.VERTEX_SHADER ? 'Vertex' : 'Fragment'}): ${errorLog}`);
+      console.error(`An error occurred compiling the shader (${type === gl.VERTEX_SHADER ? 'Vertex' : 'Fragment'}): ${gl.getShaderInfoLog(shader)}`);
       gl.deleteShader(shader);
       return null;
     }
@@ -370,22 +379,15 @@ export function ImageCanvas() {
         time: gl.getUniformLocation(shaderProgram, 'u_time'),
         resolution: gl.getUniformLocation(shaderProgram, 'u_resolution'),
         rotationAngle: gl.getUniformLocation(shaderProgram, 'u_rotationAngle'), 
-        scale: gl.getUniformLocation(shaderProgram, 'u_scale'),                  
+        scale: gl.getUniformLocation(shaderProgram, 'u_scale'),     
+        cropTexScale: gl.getUniformLocation(shaderProgram, 'u_crop_tex_scale'), // New
+        cropTexOffset: gl.getUniformLocation(shaderProgram, 'u_crop_tex_offset'), // New             
       },
     };
-
-    // Verify all attribute and uniform locations
-    for (const key in progInfo.attribLocations) {
-      if (progInfo.attribLocations[key as keyof ProgramInfo['attribLocations']] === -1) {
-        console.warn(`Attribute ${key} NOT found in shader.`);
-      }
-    }
-    for (const key in progInfo.uniformLocations) {
-       if (progInfo.uniformLocations[key as keyof ProgramInfo['uniformLocations']] === null) {
-        console.warn(`Uniform ${key} NOT found in shader.`);
-      }
-    }
-    console.log("Shader Program Info Initialized.");
+    console.log("Shader Program Info Initialized. Locations:", {
+        attrs: progInfo.attribLocations,
+        uniforms: progInfo.uniformLocations
+    });
     return progInfo;
   }, [loadShader]);
 
@@ -393,13 +395,12 @@ export function ImageCanvas() {
     const positionBuffer = gl.createBuffer();
     if (!positionBuffer) { console.error("Failed to create position buffer"); return null; }
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    const positions = [-1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0];
+    const positions = [-1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0]; // Full-screen quad
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
     const textureCoordBuffer = gl.createBuffer();
     if (!textureCoordBuffer) { console.error("Failed to create texture coordinate buffer"); return null; }
     gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
-    // Flipped Y for texture coordinates: (0,0) is bottom-left in WebGL tex coords
     const textureCoordinates = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]; 
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
     
@@ -422,16 +423,14 @@ export function ImageCanvas() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     if (checkGLError(gl, "loadTexture - after texParameteri")) return null;
 
-    // Tell WebGL to flip the Y axis when unpacking textures.
-    // This is common because HTML <img> elements and WebGL have different Y-axis origins.
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); 
     if (checkGLError(gl, "loadTexture - after pixelStorei UNPACK_FLIP_Y_WEBGL")) return null;
     
     try {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-      console.log("Texture loaded into GPU via texImage2D.");
+      console.log("Texture loaded into GPU via texImage2D:", image.src.substring(0,50));
     } catch (e) {
-      console.error("Error during texImage2D:", e);
+      console.error("Error during texImage2D:", e, image.src.substring(0,50));
       gl.deleteTexture(texture);
       return null;
     }
@@ -441,7 +440,7 @@ export function ImageCanvas() {
         return null;
     }
     
-    gl.bindTexture(gl.TEXTURE_2D, null); // Unbind
+    gl.bindTexture(gl.TEXTURE_2D, null); 
     return texture;
   }, [checkGLError]);
 
@@ -453,34 +452,40 @@ export function ImageCanvas() {
     const currentTexture = textureRef.current;
 
     if (!gl || !programInfo || !currentBuffers || !canvas) {
-        // console.warn("drawScene: WebGL context or resources not ready.");
         return;
     }
     
     if (!originalImage || !currentTexture) {
       gl.clearColor(0.188, 0.188, 0.188, 1.0); 
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      // console.log("drawScene: No image or texture, cleared canvas.");
       return;
     }
 
     // --- Canvas Sizing ---
     let imgNatWidth = originalImage.naturalWidth;
     let imgNatHeight = originalImage.naturalHeight;
-
-    let sWidth = imgNatWidth / settings.cropZoom;
-    let sHeight = imgNatHeight / settings.cropZoom;
     
-    let contentAspectRatio = sWidth / sHeight;
+    // These are the dimensions of the *content* we want to display from the original image,
+    // after considering rotation (90/270) for aspect ratio, but BEFORE cropZoom.
+    // The cropZoom will be handled by scaling texture coordinates.
+    let displayContentWidth = imgNatWidth;
+    let displayContentHeight = imgNatHeight;
+
+    if (settings.rotation === 90 || settings.rotation === 270) {
+        [displayContentWidth, displayContentHeight] = [displayContentHeight, displayContentWidth];
+    }
+
+    let contentAspectRatio = displayContentWidth / displayContentHeight;
     
     let canvasPhysicalWidth: number;
     let canvasPhysicalHeight: number;
 
+    // Determine canvas size to fit content within MAX limits, maintaining aspect ratio
     if (contentAspectRatio > 1) { 
-        canvasPhysicalWidth = Math.min(sWidth, (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO));
+        canvasPhysicalWidth = Math.min(displayContentWidth, (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO));
         canvasPhysicalHeight = canvasPhysicalWidth / contentAspectRatio;
     } else { 
-        canvasPhysicalHeight = Math.min(sHeight, MAX_PHYSICAL_HEIGHT_CAP);
+        canvasPhysicalHeight = Math.min(displayContentHeight, MAX_PHYSICAL_HEIGHT_CAP);
         canvasPhysicalWidth = canvasPhysicalHeight * contentAspectRatio;
         if (canvasPhysicalWidth > MAX_WIDTH_STANDARD_RATIO) {
             canvasPhysicalWidth = MAX_WIDTH_STANDARD_RATIO;
@@ -490,18 +495,10 @@ export function ImageCanvas() {
     
     canvasPhysicalWidth = Math.max(1, Math.round(canvasPhysicalWidth));
     canvasPhysicalHeight = Math.max(1, Math.round(canvasPhysicalHeight));
-
-    // Adjust canvas buffer size based on 90/270 degree rotation
-    if (settings.rotation === 90 || settings.rotation === 270) {
-        const temp = canvasPhysicalWidth;
-        canvasPhysicalWidth = canvasPhysicalHeight;
-        canvasPhysicalHeight = temp;
-    }
     
     if (canvas.width !== canvasPhysicalWidth || canvas.height !== canvasPhysicalHeight) {
         canvas.width = canvasPhysicalWidth;
         canvas.height = canvasPhysicalHeight;
-        // console.log(`Canvas resized to: ${canvas.width}x${canvas.height}`);
     }
     // --- End Canvas Sizing ---
     
@@ -525,12 +522,11 @@ export function ImageCanvas() {
     gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
 
-    // Bind texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, currentTexture);
     if (programInfo.uniformLocations.sampler) {
         gl.uniform1i(programInfo.uniformLocations.sampler, 0);
-    } else { console.warn("u_sampler location not found"); }
+    }
 
     // Pass all settings to shaders
     if (programInfo.uniformLocations.brightness) gl.uniform1f(programInfo.uniformLocations.brightness, settings.brightness);
@@ -558,10 +554,10 @@ export function ImageCanvas() {
 
     if (programInfo.uniformLocations.vignetteIntensity) gl.uniform1f(programInfo.uniformLocations.vignetteIntensity, settings.vignetteIntensity);
     if (programInfo.uniformLocations.grainIntensity) gl.uniform1f(programInfo.uniformLocations.grainIntensity, settings.grainIntensity);
-    if (programInfo.uniformLocations.time) gl.uniform1f(programInfo.uniformLocations.time, performance.now() / 5000.0);
+    if (programInfo.uniformLocations.time) gl.uniform1f(programInfo.uniformLocations.time, performance.now() / 1000.0); // Time in seconds
     if (programInfo.uniformLocations.resolution) gl.uniform2f(programInfo.uniformLocations.resolution, gl.canvas.width, gl.canvas.height);
 
-    // Transform uniforms
+    // Transform uniforms (rotation and flip)
     let rotationInRadians = 0;
     switch (settings.rotation) {
       case 90: rotationInRadians = Math.PI / 2; break;
@@ -572,52 +568,69 @@ export function ImageCanvas() {
     if (programInfo.uniformLocations.rotationAngle) gl.uniform1f(programInfo.uniformLocations.rotationAngle, rotationInRadians);
     if (programInfo.uniformLocations.scale) gl.uniform2f(programInfo.uniformLocations.scale, settings.scaleX, settings.scaleY);
 
+    // Crop/Zoom/Pan uniforms
+    const cropZoom = Math.max(1.0, settings.cropZoom); // Ensure zoom is at least 1
+    const cropTexScaleVal: [number, number] = [1.0 / cropZoom, 1.0 / cropZoom];
+    
+    // Max offset for texture coordinates, allows panning to the edge of the zoomed area
+    const maxTexOffset = (1.0 - (1.0 / cropZoom)) / 2.0;
+    let texOffsetX = settings.cropOffsetX * maxTexOffset;
+    let texOffsetY = settings.cropOffsetY * maxTexOffset; // In WebGL tex coords, positive Y is often up.
+
+    // Adjust pan direction based on flips
+    // texOffsetX *= settings.scaleX; // If scaleX is -1, flips pan direction
+    // texOffsetY *= settings.scaleY; // If scaleY is -1, flips pan direction
+
+    const cropTexOffsetVal: [number, number] = [texOffsetX, texOffsetY];
+
+    if (programInfo.uniformLocations.cropTexScale) gl.uniform2fv(programInfo.uniformLocations.cropTexScale, cropTexScaleVal);
+    if (programInfo.uniformLocations.cropTexOffset) gl.uniform2fv(programInfo.uniformLocations.cropTexOffset, cropTexOffsetVal);
+
     checkGLError(gl, "drawScene - before drawArrays after setting uniforms");
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); 
     checkGLError(gl, "drawScene - after drawArrays");
 
-  }, [originalImage, canvasRef, settings, checkGLError]); // isPreviewing removed, settings handles re-render
+  }, [originalImage, canvasRef, settings, checkGLError, hexToRgbNormalizedArray]);
 
 
   // WebGL Initialization Effect
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas && !isInitializedRef.current) {
-      console.log("ImageCanvas: Attempting WebGL initialization.");
-      let context = canvas.getContext('webgl', { preserveDrawingBuffer: true }); 
-      if (!context) {
-        context = canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true });
-      }
-      
-      if (!context) {
-        console.error("ImageCanvas: Unable to initialize WebGL. Your browser or machine may not support it.");
-        return;
-      }
-      glRef.current = context;
-      console.log("ImageCanvas: WebGL context successfully stored in glRef.");
-
-      const pInfo = initShaderProgram(glRef.current);
-      if (pInfo) {
-        programInfoRef.current = pInfo;
-      } else {
-        console.error("ImageCanvas: Failed to initialize shader program. WebGL rendering will not work.");
-        glRef.current = null; 
-        return;
-      }
-
-      const bInfo = initBuffers(glRef.current);
-      if (bInfo) {
-        buffersRef.current = bInfo;
-      } else {
-        console.error("ImageCanvas: Failed to initialize buffers. WebGL rendering will not work.");
-        glRef.current = null; 
-        programInfoRef.current = null;
-        return;
-      }
-      isInitializedRef.current = true; 
-      console.log("ImageCanvas: WebGL initialized successfully.");
-      requestAnimationFrame(drawScene); // Initial draw/clear
+    if (!canvasRef.current || isInitializedRef.current) return;
+    
+    console.log("ImageCanvas: Attempting WebGL initialization.");
+    let context = canvasRef.current.getContext('webgl', { preserveDrawingBuffer: true }); 
+    if (!context) {
+      context = canvasRef.current.getContext('experimental-webgl', { preserveDrawingBuffer: true });
     }
+    
+    if (!context) {
+      console.error("ImageCanvas: Unable to initialize WebGL. Your browser or machine may not support it.");
+      return;
+    }
+    glRef.current = context;
+    console.log("WebGL context successfully stored in glRef.");
+
+    const pInfo = initShaderProgram(glRef.current);
+    if (pInfo) {
+      programInfoRef.current = pInfo;
+    } else {
+      console.error("ImageCanvas: Failed to initialize shader program. WebGL rendering will not work.");
+      glRef.current = null; 
+      return;
+    }
+
+    const bInfo = initBuffers(glRef.current);
+    if (bInfo) {
+      buffersRef.current = bInfo;
+    } else {
+      console.error("ImageCanvas: Failed to initialize buffers. WebGL rendering will not work.");
+      glRef.current = null; 
+      programInfoRef.current = null;
+      return;
+    }
+    isInitializedRef.current = true; 
+    console.log("ImageCanvas: WebGL initialized successfully.");
+    requestAnimationFrame(drawScene); // Initial draw/clear
   }, [canvasRef, initShaderProgram, initBuffers, drawScene]); 
 
 
@@ -625,69 +638,60 @@ export function ImageCanvas() {
   useEffect(() => {
     const gl = glRef.current;
     if (!gl || !isInitializedRef.current) {
-        // console.log("ImageCanvas TextureEffect: WebGL not initialized, skipping texture load.");
         return;
     }
 
     if (originalImage) {
         const imageElement = originalImage; 
-        console.log("ImageCanvas TextureEffect: originalImage present. Processing for texture.");
-
+        
         const processAndLoadTexture = () => {
             if (textureRef.current) {
                 gl.deleteTexture(textureRef.current);
-                console.log("ImageCanvas TextureEffect: Deleted old texture.");
                 textureRef.current = null; 
             }
             const newTexture = loadTexture(gl, imageElement);
             if (newTexture) {
                 textureRef.current = newTexture;
-                console.log("ImageCanvas TextureEffect: New texture loaded and stored in textureRef.");
+                requestAnimationFrame(drawScene); 
             } else {
                 textureRef.current = null; 
-                console.error("ImageCanvas TextureEffect: Failed to load new texture.");
+                console.error("Failed to load new texture from image: ", imageElement.src.substring(0,50));
+                requestAnimationFrame(drawScene); // Attempt to clear or show error state
             }
-            requestAnimationFrame(drawScene); // Draw after texture update
         };
         
         if (imageElement.complete && imageElement.naturalWidth > 0) {
-            console.log("ImageCanvas TextureEffect: Image already complete, loading texture directly.");
             processAndLoadTexture();
         } else {
-            console.log("ImageCanvas TextureEffect: Image not complete, adding event listeners.");
             const handleLoad = () => {
-                console.log("ImageCanvas TextureEffect: Image 'load' event fired.");
                 processAndLoadTexture();
                 imageElement.removeEventListener('load', handleLoad);
                 imageElement.removeEventListener('error', handleError);
             };
             const handleError = () => {
-                console.error("ImageCanvas TextureEffect: Image 'error' event fired. Cannot load texture.");
+                console.error("Image error event for texture loading: ", imageElement.src.substring(0,50));
                 imageElement.removeEventListener('load', handleLoad);
                 imageElement.removeEventListener('error', handleError);
                 if (textureRef.current) {
                     gl.deleteTexture(textureRef.current);
                     textureRef.current = null;
                 }
-                requestAnimationFrame(drawScene); // Clear canvas or show error state
+                requestAnimationFrame(drawScene);
             };
             imageElement.addEventListener('load', handleLoad);
             imageElement.addEventListener('error', handleError);
-            // Double-check in case 'load' fired before listener was attached
-            if (imageElement.complete && imageElement.naturalWidth > 0) {
-                 console.log("ImageCanvas TextureEffect: Image completed before 'load' listener attached, processing now.");
+            if (imageElement.complete && imageElement.naturalWidth > 0) { // Double check
                  handleLoad(); 
             }
         }
-    } else { // No originalImage
+    } else { 
       if (textureRef.current) {
-        console.log("ImageCanvas TextureEffect: No originalImage, deleting existing texture.");
         gl.deleteTexture(textureRef.current);
         textureRef.current = null;
       }
-      requestAnimationFrame(drawScene); // Clear canvas
+      requestAnimationFrame(drawScene); 
     }
-  }, [originalImage, loadTexture, drawScene, isInitializedRef]);
+  }, [originalImage, loadTexture, drawScene]); // isInitializedRef removed as it's handled by the !gl guard
 
 
   // Render Loop for Animations (e.g., Grain)
@@ -704,7 +708,6 @@ export function ImageCanvas() {
     const renderLoop = () => {
       if (!active) return;
       drawScene();
-      // Only continue loop if an effect that needs animation is active
       if (settings.grainIntensity > 0.001 ) { 
         animationFrameIdRef.current = requestAnimationFrame(renderLoop);
       } else {
@@ -712,17 +715,15 @@ export function ImageCanvas() {
       }
     };
 
-    // If an animated effect is active, start the loop.
-    // Otherwise, draw once for static settings.
     if (settings.grainIntensity > 0.001 ) {
         if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
         animationFrameIdRef.current = requestAnimationFrame(renderLoop);
     } else {
-        if (animationFrameIdRef.current) { // If loop was running, stop it
+        if (animationFrameIdRef.current) { 
             cancelAnimationFrame(animationFrameIdRef.current);
             animationFrameIdRef.current = null;
         }
-        requestAnimationFrame(drawScene); // Draw once for static settings
+        requestAnimationFrame(drawScene); 
     }
     
     return () => {
@@ -732,7 +733,7 @@ export function ImageCanvas() {
         animationFrameIdRef.current = null;
       }
     };
-  }, [settings, drawScene, originalImage]); // Re-evaluate loop when settings or image change
+  }, [settings, drawScene, originalImage]);
 
 
   // Cleanup WebGL resources on unmount
@@ -748,11 +749,9 @@ export function ImageCanvas() {
       if (animId) cancelAnimationFrame(animId);
       if (gl) {
         if (texInfo) {
-            console.log("Deleting texture on unmount:", texInfo);
             gl.deleteTexture(texInfo);
         }
         if (pInfo && pInfo.program) {
-            console.log("Deleting shader program on unmount:", pInfo.program);
             const attachedShaders = gl.getAttachedShaders(pInfo.program);
             if (attachedShaders) {
                 attachedShaders.forEach(shader => {
@@ -763,30 +762,15 @@ export function ImageCanvas() {
             gl.deleteProgram(pInfo.program);
         }
         if (bInfo) {
-          if(bInfo.position) {
-            console.log("Deleting position buffer on unmount:", bInfo.position);
-            gl.deleteBuffer(bInfo.position);
-          }
-          if(bInfo.textureCoord) {
-            console.log("Deleting texture coord buffer on unmount:", bInfo.textureCoord);
-            gl.deleteBuffer(bInfo.textureCoord);
-          }
+          if(bInfo.position) gl.deleteBuffer(bInfo.position);
+          if(bInfo.textureCoord) gl.deleteBuffer(bInfo.textureCoord);
         }
-        // Attempt to lose context if extension is available
-        // const loseContextExt = gl.getExtension('WEBGL_lose_context');
-        // if (loseContextExt) {
-        //     try { 
-        //         console.log("Losing WebGL context on unmount.");
-        //         loseContextExt.loseContext(); 
-        //     } catch (e) { console.warn("Error trying to lose WebGL context on unmount:", e); }
-        // }
       }
       glRef.current = null;
       programInfoRef.current = null;
       buffersRef.current = null;
       textureRef.current = null;
       isInitializedRef.current = false;
-      console.log("ImageCanvas: WebGL resources cleanup complete.");
     };
   }, []);
 
@@ -808,3 +792,4 @@ export function ImageCanvas() {
   );
 }
 
+    
