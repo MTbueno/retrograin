@@ -18,8 +18,8 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-// Change this string to update the displayed version
-const CURRENT_VERSION_STRING = "alpha 0.3_webgl.25_noise_def_fix";
+// This string will be updated by the AI for versioning
+const CURRENT_VERSION_STRING = "alpha 0.3_webgl.26_jiggle_fix_final"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
