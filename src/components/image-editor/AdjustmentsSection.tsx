@@ -4,7 +4,7 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Brush } from 'lucide-react'; // Removed Focus
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Brush } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
@@ -15,7 +15,6 @@ export function AdjustmentsSection() {
   const handleSliderChange = (
     type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' | 
           'highlights' | 'shadows' | 'whites' | 'blacks' | 
-          // 'sharpness' | // Removed
           'hueRotate' | 
           'vignetteIntensity' | 'grainIntensity' | 
           'colorTemperature' | 
@@ -53,9 +52,6 @@ export function AdjustmentsSection() {
       case 'blacks':
         dispatchSettings({ type: 'SET_BLACKS', payload: value });
         break;
-      // case 'sharpness': // Removed
-      //   dispatchSettings({ type: 'SET_SHARPNESS', payload: value });
-      //   break;
       case 'hueRotate': 
         dispatchSettings({ type: 'SET_HUE_ROTATE', payload: value });
         break;
@@ -102,12 +98,11 @@ export function AdjustmentsSection() {
   };
 
   const basicAdjustmentControls = [
-    { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.5, max: 1.5, step: 0.01 },
+    { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.75, max: 1.25, step: 0.01 }, // Range updated
     { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
     { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 },
     { id: 'vibrance', label: 'Vibrance', icon: Brush, value: settings.vibrance, min: -1, max: 1, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
-    // { id: 'sharpness', label: 'Sharpness', icon: Focus, value: settings.sharpness, min: 0, max: 1, step: 0.01 }, // Removed
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
     { id: 'shadows', label: 'Shadows', icon: Moon, value: settings.shadows, min: -1, max: 1, step: 0.01 },
     { id: 'whites', label: 'Whites', icon: Sparkles, value: settings.whites, min: -1, max: 1, step: 0.01 }, 
@@ -132,10 +127,10 @@ export function AdjustmentsSection() {
           {control.label}
         </Label>
         <span className="text-xs text-muted-foreground">
-          {control.id === 'exposure' ? control.value.toFixed(2) :
+          {control.id === 'exposure' || control.id === 'brightness' ? control.value.toFixed(2) : // Added brightness
            control.id === 'hueRotate' ? `${Math.round(control.value)}°` : 
            ['highlights', 'shadows', 'whites', 'blacks', 'vibrance'].includes(control.id) ? `${Math.round(control.value * 100)}` :
-           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || ['saturation', /*'sharpness',*/ 'vignetteIntensity', 'grainIntensity'].includes(control.id) ? `${Math.round(control.value * 100)}%` : // Removed sharpness
+           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || ['saturation', 'vignetteIntensity', 'grainIntensity'].includes(control.id) ? `${Math.round(control.value * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value)}` :
            `${Math.round(control.value * 100)}%`} 
         </span>
