@@ -16,7 +16,7 @@ const THROTTLE_WAIT = 100; // ms
 export function AdjustmentsSection() {
   const { settings, dispatchSettings, originalImage, setIsPreviewing } = useImageEditor();
 
-  const throttledDispatchSettings = useCallback(
+  const throttledDispatch = useCallback(
     throttle((action: SettingsAction) => {
       dispatchSettings(action);
     }, THROTTLE_WAIT, { leading: true, trailing: true }),
@@ -56,7 +56,7 @@ export function AdjustmentsSection() {
       case 'tintHighlightsSaturation': action = { type: 'SET_TINT_HIGHLIGHTS_SATURATION', payload: value }; break;
     }
     if (action) {
-      throttledDispatchSettings(action);
+      throttledDispatch(action);
     }
   };
 
@@ -107,11 +107,14 @@ export function AdjustmentsSection() {
         return;
     }
 
+    let action: SettingsAction | null = null;
     if (tonalRange === 'shadows') {
-      dispatchSettings({ type: 'SET_TINT_SHADOWS_COLOR', payload: color });
+      action = { type: 'SET_TINT_SHADOWS_COLOR', payload: color };
     } else if (tonalRange === 'highlights') {
-      dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
+      action = { type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color };
     }
+    
+    if(action) dispatchSettings(action);
     if (originalImage) setIsPreviewing(false);
   };
 
@@ -221,7 +224,7 @@ export function AdjustmentsSection() {
               handleTintColorChange(tonalRange, newColor);
             }}
             className="h-4" 
-            onPointerUp={() => {
+            onPointerUp={() => { // Renamed from onPointerCommit for spectrum slider
               if (originalImage) setIsPreviewing(false);
             }}
           />
@@ -248,14 +251,14 @@ export function AdjustmentsSection() {
       <Separator className="my-4" />
       
       <div>
-        <Label className="text-sm font-medium block">Colors</Label>
+        <Label className="text-sm font-medium block mb-2">Colors</Label>
         {colorSettingControls.map(control => renderSlider(control))}
       </div>
       
       <Separator className="my-4" />
 
       <div>
-        <Label className="text-sm font-medium block">Tint</Label>
+        <Label className="text-sm font-medium block mb-2">Tint</Label>
         {renderTintControlGroup('shadows', 'Shadows', settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation)}
         {renderTintControlGroup('highlights', 'Highlights', settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation)}
       </div>
@@ -263,11 +266,9 @@ export function AdjustmentsSection() {
       <Separator className="my-4" />
 
       <div>
-        <Label className="text-sm font-medium block">Effects</Label>
+        <Label className="text-sm font-medium block mb-2">Effects</Label>
         {effectSettingControls.map(control => renderSlider(control))}
       </div>
     </div>
   );
 }
-
-    

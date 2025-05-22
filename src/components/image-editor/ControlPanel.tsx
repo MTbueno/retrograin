@@ -60,5 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    

@@ -16,7 +16,7 @@ const THROTTLE_WAIT = 100; // ms
 export function TransformsSection() {
   const { dispatchSettings, settings, originalImage, setIsPreviewing } = useImageEditor();
 
-  const throttledDispatchSettings = useCallback(
+  const throttledDispatch = useCallback(
     throttle((action: SettingsAction) => {
       dispatchSettings(action);
     }, THROTTLE_WAIT, { leading: true, trailing: true }),
@@ -38,7 +38,7 @@ export function TransformsSection() {
       action = { type: 'SET_CROP_OFFSET_Y', payload: value };
     }
     if (action) {
-      throttledDispatchSettings(action);
+      throttledDispatch(action);
     }
   };
 
@@ -188,5 +188,3 @@ export function TransformsSection() {
     </TooltipProvider>
   );
 }
-
-    

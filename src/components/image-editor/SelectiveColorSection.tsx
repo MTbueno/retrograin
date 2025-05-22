@@ -28,7 +28,7 @@ export function SelectiveColorSection() {
   const activeTarget = settings.activeSelectiveColorTarget;
   const currentAdjustments = settings.selectiveColors[activeTarget];
 
-  const throttledDispatchSettings = useCallback(
+  const throttledDispatch = useCallback(
     throttle((action: SettingsAction) => {
       dispatchSettings(action);
     }, THROTTLE_WAIT, { leading: true, trailing: true }),
@@ -45,7 +45,7 @@ export function SelectiveColorSection() {
     value: number
   ) => {
     if (originalImage) setIsPreviewing(true);
-    throttledDispatchSettings({
+    throttledDispatch({
       type: 'SET_SELECTIVE_COLOR_ADJUSTMENT',
       payload: {
         target: activeTarget,
@@ -106,7 +106,7 @@ export function SelectiveColorSection() {
             </Label>
             <span className="text-xs text-muted-foreground">
               {control.id === 'hue' 
-                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.1 / 0.5))}°` 
+                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.5 / 0.5))}°` // Max UI is 180deg, shader is +/- 0.5
                 : `${Math.round((control.value ?? 0) * 100)}%`}
             </span>
           </div>
@@ -132,5 +132,3 @@ export function SelectiveColorSection() {
     </div>
   );
 }
-
-    
