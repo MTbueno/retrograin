@@ -4,6 +4,20 @@
 import type { Dispatch, ReactNode, RefObject } from 'react';
 import React, { createContext, useContext, useReducer, useState, useRef, useCallback, useEffect } from 'react';
 
+// Define color targets for selective color adjustments
+export const SELECTIVE_COLOR_TARGETS = ['reds', 'oranges', 'yellows', 'greens', 'cyans', 'blues', 'purples', 'magentas'] as const;
+export type SelectiveColorTarget = typeof SELECTIVE_COLOR_TARGETS[number];
+
+export interface SelectiveColorAdjustment {
+  hue: number;        // -0.5 to 0.5 (maps to -180 to 180 degrees for shader)
+  saturation: number; // -1.0 to 1.0 (maps to -100% to 100% change for shader)
+  luminance: number;  // -1.0 to 1.0 (maps to -100% to 100% change for shader)
+}
+
+export type SelectiveColors = {
+  [K in SelectiveColorTarget]: SelectiveColorAdjustment;
+};
+
 export interface ImageSettings {
   brightness: number;
   contrast: number;
@@ -15,7 +29,7 @@ export interface ImageSettings {
   whites: number;
   blacks: number;
   hueRotate: number;
-  // filter: string | null; // Presets are not WebGL ready yet
+  filter: string | null;
   vignetteIntensity: number;
   grainIntensity: number;
   colorTemperature: number;
@@ -31,7 +45,15 @@ export interface ImageSettings {
   cropZoom: number; // 1 (no zoom) to N
   cropOffsetX: number; // -1 to 1
   cropOffsetY: number; // -1 to 1
+  // Selective Color
+  selectiveColors: SelectiveColors;
+  activeSelectiveColorTarget: SelectiveColorTarget;
 }
+
+const initialSelectiveColors: SelectiveColors = SELECTIVE_COLOR_TARGETS.reduce((acc, color) => {
+  acc[color] = { hue: 0, saturation: 0, luminance: 0 };
+  return acc;
+}, {} as SelectiveColors);
 
 export const initialImageSettings: ImageSettings = {
   brightness: 1,
@@ -44,7 +66,7 @@ export const initialImageSettings: ImageSettings = {
   whites: 0,
   blacks: 0,
   hueRotate: 0,
-  // filter: null, // Presets are not WebGL ready yet
+  filter: null,
   vignetteIntensity: 0,
   grainIntensity: 0,
   colorTemperature: 0,
@@ -60,15 +82,9 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
+  selectiveColors: initialSelectiveColors,
+  activeSelectiveColorTarget: 'reds',
 };
-
-export interface ImageObject {
-  id: string;
-  imageElement: HTMLImageElement;
-  baseFileName: string;
-  settings: ImageSettings;
-  thumbnailDataUrl: string;
-}
 
 export type SettingsAction =
   | { type: 'SET_BRIGHTNESS'; payload: number }
@@ -81,7 +97,7 @@ export type SettingsAction =
   | { type: 'SET_WHITES'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
   | { type: 'SET_HUE_ROTATE'; payload: number }
-  // | { type: 'APPLY_FILTER'; payload: string | null } // Presets are not WebGL ready yet
+  | { type: 'APPLY_FILTER'; payload: string | null }
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -98,9 +114,11 @@ export type SettingsAction =
   | { type: 'SET_CROP_ZOOM'; payload: number }
   | { type: 'SET_CROP_OFFSET_X'; payload: number }
   | { type: 'SET_CROP_OFFSET_Y'; payload: number }
-  | { type: 'RESET_CROP_AND_TRANSFORMS' } 
+  | { type: 'RESET_CROP_AND_TRANSFORMS' }
   | { type: 'RESET_SETTINGS' }
-  | { type: 'LOAD_SETTINGS'; payload: ImageSettings };
+  | { type: 'LOAD_SETTINGS'; payload: ImageSettings }
+  | { type: 'SET_ACTIVE_SELECTIVE_COLOR_TARGET'; payload: SelectiveColorTarget }
+  | { type: 'SET_SELECTIVE_COLOR_ADJUSTMENT'; payload: { target: SelectiveColorTarget; adjustment: Partial<SelectiveColorAdjustment> } };
 
 function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSettings {
   switch (action.type) {
@@ -124,8 +142,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, blacks: action.payload };
     case 'SET_HUE_ROTATE':
       return { ...state, hueRotate: action.payload };
-    // case 'APPLY_FILTER': // Presets are not WebGL ready yet
-    //   return { ...state, filter: action.payload };
+    case 'APPLY_FILTER':
+      return { ...state, filter: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -159,18 +177,19 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
     case 'SET_CROP_OFFSET_Y':
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
     case 'RESET_CROP_AND_TRANSFORMS':
-      return { 
-        ...state, 
-        cropZoom: 1, 
-        cropOffsetX: 0, 
-        cropOffsetY: 0, 
-        rotation: 0, 
-        scaleX: 1, 
-        scaleY: 1 
+      return {
+        ...state,
+        cropZoom: 1,
+        cropOffsetX: 0,
+        cropOffsetY: 0,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
       };
     case 'RESET_SETTINGS':
       return {
         ...initialImageSettings,
+        // Preserve transforms
         rotation: state.rotation,
         scaleX: state.scaleX,
         scaleY: state.scaleY,
@@ -180,6 +199,19 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       };
     case 'LOAD_SETTINGS':
       return { ...action.payload };
+    case 'SET_ACTIVE_SELECTIVE_COLOR_TARGET':
+      return { ...state, activeSelectiveColorTarget: action.payload };
+    case 'SET_SELECTIVE_COLOR_ADJUSTMENT':
+      return {
+        ...state,
+        selectiveColors: {
+          ...state.selectiveColors,
+          [action.payload.target]: {
+            ...state.selectiveColors[action.payload.target],
+            ...action.payload.adjustment,
+          },
+        },
+      };
     default:
       return state;
   }
@@ -196,8 +228,8 @@ interface ImageEditorContextType {
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
   canvasRef: RefObject<HTMLCanvasElement>;
-  getCanvasDataURL: (type?: string, quality?: number) => string | null; 
-  generateImageDataUrlWithSettings: (imageObject: ImageObject, type?: string, quality?: number) => Promise<string | null>;
+  getCanvasDataURL: () => string | null;
+  generateImageDataUrlWithSettings: (imageObject: ImageObject) => Promise<string | null>;
   isPreviewing: boolean;
   setIsPreviewing: (isPreviewing: boolean) => void;
   copiedSettings: ImageSettings | null;
@@ -245,6 +277,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
+
 
   useEffect(() => {
     if (activeImageId && currentSettings) {
@@ -302,14 +335,15 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [allImages, activeImageId, setActiveImageId]);
 
-  const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality: number = 0.92): string | null => {
+  const getCanvasDataURL = useCallback((): string | null => {
     const currentCanvas = canvasRef.current;
     if (!currentCanvas || !currentActiveImageElement) {
       console.warn("getCanvasDataURL: Canvas or original image not available for WebGL export.");
       return null;
     }
     try {
-      return currentCanvas.toDataURL(type, quality);
+      // For WebGL, ensure preserveDrawingBuffer: true is set on context creation if needed
+      return currentCanvas.toDataURL('image/jpeg', 0.92);
     } catch (e) {
       console.error("Error getting data URL from WebGL canvas:", e);
       return null;
@@ -345,16 +379,47 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
 
   const generateImageDataUrlWithSettings = useCallback(async (
     imageObject: ImageObject,
-    type: string = 'image/jpeg',
-    quality: number = 0.92
   ): Promise<string | null> => {
-    if (activeImageId === imageObject.id && canvasRef.current && currentActiveImageElement) {
-        console.warn("generateImageDataUrlWithSettings: Using main canvas for active image.");
-        return canvasRef.current.toDataURL(type, quality);
+     if (!canvasRef.current) {
+      console.error("generateImageDataUrlWithSettings: Main canvasRef is not available.");
+      return null;
     }
-    console.error("generateImageDataUrlWithSettings for WebGL (ZIP export for non-active images) is not fully implemented for non-active images and will return null.");
-    return null;
-  }, [activeImageId, canvasRef, currentActiveImageElement]);
+    // Temporarily set the main canvas to render the target imageObject
+    // This is a simplification; a dedicated offscreen canvas for export would be better
+    // but requires passing GL context and recreating shaders/buffers or a shared GL resource manager.
+    const previousActiveId = activeImageId;
+    const previousSettings = { ...currentSettings };
+
+    // Simulate activating the target imageObject
+    setCurrentActiveImageElement(imageObject.imageElement);
+    dispatchSettings({ type: 'LOAD_SETTINGS', payload: imageObject.settings });
+
+    // Wait for a render cycle to ensure the canvas updates
+    // This is a hacky way to wait for re-render; a more robust solution would use a callback
+    // or a promise that resolves after the WebGL draw call for these settings.
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for re-render
+
+    let dataURL: string | null = null;
+    try {
+        dataURL = canvasRef.current.toDataURL('image/jpeg', 0.92);
+    } catch (e) {
+        console.error("Error generating data URL during generateImageDataUrlWithSettings:", e);
+    }
+
+    // Restore previous active image and settings
+    if (previousActiveId) {
+        const prevActiveImageObj = allImages.find(img => img.id === previousActiveId);
+        if (prevActiveImageObj) {
+            setCurrentActiveImageElement(prevActiveImageObj.imageElement);
+        }
+        dispatchSettings({ type: 'LOAD_SETTINGS', payload: previousSettings });
+         await new Promise(resolve => setTimeout(resolve, 50)); // Re-render back
+    }
+
+
+    return dataURL;
+  }, [activeImageId, currentSettings, allImages, canvasRef]);
+
 
   return (
     <ImageEditorContext.Provider
