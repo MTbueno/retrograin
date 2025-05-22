@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useImageEditor, initialImageSettings } from '@/contexts/ImageEditorContext';
+import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Button } from '@/components/ui/button';
 import { Download, RotateCcwSquare, Copy, ClipboardPaste, Save, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -18,14 +18,13 @@ import {
   revokeAccessToken
 } from '@/lib/googleDrive';
 
-const JPEG_QUALITY_EXPORT = 0.92; 
 
 export function ActionButtonsSection() {
   const {
     originalImage,
     allImages,
     dispatchSettings,
-    settings, // Added to access settings.isViewingOriginal
+    settings,
     baseFileName, 
     getCanvasDataURL, 
     generateImageDataUrlWithSettings,
@@ -33,11 +32,12 @@ export function ActionButtonsSection() {
     pasteSettingsToActiveImage,
     copiedSettings,
     activeImageId,
+    jpegQualityExport,
   } = useImageEditor();
   const { toast } = useToast();
   const { user: firebaseUser } = useAuth();
 
-  const [isGapiClientInitialized, setIsGapiClientInitialized] = useState(false);
+  const [isGapiClientInitialized, setIsGapiClientInitialized] = useState(false); // GAPI client library (gapi.client) is loaded and init
   const [isDriveSdkReady, setIsDriveSdkReady] = useState(false); // True if GIS token client is init
   const [isDriveAuthorized, setIsDriveAuthorized] = useState(false); // True if user has granted Drive scope
   const [isConnectingOrSavingToDrive, setIsConnectingOrSavingToDrive] = useState(false);
@@ -50,7 +50,6 @@ export function ActionButtonsSection() {
       if (window.gapi && window.gapi.client) {
         window.gapi.client.setToken({ access_token: tokenResponse.access_token });
       }
-      // Give a brief moment for gapi.client.setToken to be effective before checking isDriveAuthenticated
       setTimeout(() => {
         if (isDriveAuthenticated()) {
           setIsDriveAuthorized(true);
@@ -70,7 +69,7 @@ export function ActionButtonsSection() {
     }
   }, [toast]);
 
- useEffect(() => {
+  useEffect(() => {
     if (!firebaseUser) {
       setIsGapiClientInitialized(false);
       setIsDriveSdkReady(false);
@@ -79,45 +78,35 @@ export function ActionButtonsSection() {
     }
 
     let gapiInitAttempts = 0;
-    const maxGapiInitAttempts = 20; // Approx 10 seconds
+    const maxGapiInitAttempts = 20; 
 
     const attemptGapiInit = () => {
       if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
         loadGapi((gapiSuccess) => {
           setIsGapiClientInitialized(gapiSuccess);
           if (gapiSuccess) {
-            // GAPI is loaded, now try to init GIS client
             let gisInitAttempts = 0;
-            const maxGisInitAttempts = 10; // Approx 5 seconds for GIS after GAPI
+            const maxGisInitAttempts = 10; 
             const attemptGisTokenClientInit = () => {
               if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.oauth2) {
                 const tokenClientSuccess = initTokenClient(handleTokenResponse);
                 setIsDriveSdkReady(tokenClientSuccess);
                 if (tokenClientSuccess) {
-                  // Check if already authorized (e.g., previous session token still valid)
                   if (isDriveAuthenticated()) {
                     setIsDriveAuthorized(true);
                   }
-                } else {
-                  // console.warn("Falha ao inicializar GIS token client.");
                 }
               } else if (gisInitAttempts < maxGisInitAttempts) {
                 gisInitAttempts++;
                 setTimeout(attemptGisTokenClientInit, 500);
-              } else {
-                // console.error("Timeout: Google Identity Services (GIS) não carregou a tempo após GAPI.");
               }
             };
             attemptGisTokenClientInit();
-          } else {
-            // console.error("Falha ao carregar GAPI client.");
           }
         });
       } else if (gapiInitAttempts < maxGapiInitAttempts) {
         gapiInitAttempts++;
         setTimeout(attemptGapiInit, 500);
-      } else {
-        // console.error("Timeout: GAPI (Google API Client Library) não carregou a tempo.");
       }
     };
     attemptGapiInit();
@@ -139,13 +128,8 @@ export function ActionButtonsSection() {
       toast({ title: 'Autorização Necessária', description: 'Conectando ao Google Drive...', variant: 'default' });
       requestAccessToken(); 
     } else {
-      // If already authorized, proceed to save (or other action if this button did more)
-      // For now, if authorized, this button might not be visible or would be "Save to Drive"
-      // This specific path (clicking "Connect" when already authorized) shouldn't happen if UI is correct.
-      // But if it does, let's ensure isDriveAuthorized is true and possibly trigger save.
-      setIsDriveAuthorized(true); // Should already be true
-       toast({ title: 'Já Conectado!', description: 'Você já está conectado ao Google Drive.', variant: 'default' });
-      // saveToDrive(); // Or just let the "Save to Drive" button handle it.
+      setIsDriveAuthorized(true);
+      toast({ title: 'Já Conectado!', description: 'Você já está conectado ao Google Drive.', variant: 'default' });
     }
   };
 
@@ -160,9 +144,7 @@ export function ActionButtonsSection() {
     setIsConnectingOrSavingToDrive(true);
     toast({ title: 'Salvando no Drive...', description: 'Por favor, aguarde.' });
     try {
-      // For WebGL, getCanvasDataURL is now the primary way to get the current image.
-      // generateImageDataUrlWithSettings is for offscreen generation if needed for batch.
-      const currentImageURI = getCanvasDataURL('image/jpeg', JPEG_QUALITY_EXPORT);
+      const currentImageURI = await getCanvasDataURL('image/jpeg', jpegQualityExport);
       if (!currentImageURI) {
         toast({ title: 'Erro ao Salvar', description: 'Não foi possível gerar dados da imagem para o Drive.', variant: 'destructive' });
         setIsConnectingOrSavingToDrive(false);
@@ -190,9 +172,9 @@ export function ActionButtonsSection() {
   };
 
   const handleDisconnectDrive = () => {
-    revokeAccessToken(); // This will clear gapi.client token internally
+    revokeAccessToken(); 
     setIsDriveAuthorized(false);
-    setIsConnectingOrSavingToDrive(false); // Ensure this is reset
+    setIsConnectingOrSavingToDrive(false); 
     toast({ title: 'Google Drive Desconectado' });
   };
 
@@ -200,6 +182,12 @@ export function ActionButtonsSection() {
     if (!originalImage) return;
     dispatchSettings({ type: 'RESET_SETTINGS' });
     toast({ title: 'Ajustes Resetados', description: 'Todos os ajustes foram resetados para a imagem atual.' });
+  };
+
+  const handleToggleOriginalView = () => {
+    if (!originalImage) return;
+    const newViewingOriginalState = !settings.isViewingOriginal;
+    dispatchSettings({ type: 'SET_IS_VIEWING_ORIGINAL', payload: newViewingOriginalState });
   };
 
   const handleCopySettings = () => {
@@ -224,13 +212,13 @@ export function ActionButtonsSection() {
     toast({ title: 'Ajustes Colados!', description: 'Os ajustes foram aplicados à imagem atual.' });
   };
 
-  const downloadSingleActiveImage = () => {
+  const downloadSingleActiveImage = async () => {
     if (!activeImageId || !originalImage) {
         toast({ title: 'Nenhuma Imagem Ativa', description: 'Selecione uma imagem para baixar.', variant: 'default' });
         return;
     }
     const activeImgObject = allImages.find(img => img.id === activeImageId);
-    let dataURL = getCanvasDataURL('image/jpeg', JPEG_QUALITY_EXPORT);
+    const dataURL = await getCanvasDataURL('image/jpeg', jpegQualityExport);
     
     if (dataURL && activeImgObject) {
       const link = document.createElement('a');
@@ -252,8 +240,7 @@ export function ActionButtonsSection() {
     const zip = new JSZip();
     let filesAdded = 0;
     for (const imgObject of allImages) {
-      // Use generateImageDataUrlWithSettings for each image to ensure correct settings are applied
-      let dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', JPEG_QUALITY_EXPORT);
+      let dataURL = await generateImageDataUrlWithSettings(imgObject.imageElement, imgObject.settings, 'image/jpeg', jpegQualityExport);
       
       if (dataURL) {
         const base64Data = dataURL.split(',')[1];
@@ -291,12 +278,6 @@ export function ActionButtonsSection() {
       });
   };
 
-  const handleToggleOriginalView = () => {
-    if (!originalImage) return;
-    dispatchSettings({ type: 'SET_IS_VIEWING_ORIGINAL', payload: !settings.isViewingOriginal });
-  };
-
-
   return (
     <div className="space-y-3 w-full max-w-[14rem] mx-auto">
       <Button onClick={handleReset} disabled={!originalImage} variant="outline" className="w-full">
@@ -310,11 +291,13 @@ export function ActionButtonsSection() {
         variant="outline" 
         className="w-full"
         title={settings.isViewingOriginal ? "Mostrar Editada" : "Mostrar Original"}
+        onPointerDown={() => dispatchSettings({ type: 'SET_IS_VIEWING_ORIGINAL', payload: true })}
+        onPointerUp={() => dispatchSettings({ type: 'SET_IS_VIEWING_ORIGINAL', payload: false })}
+        onPointerLeave={() => {if (settings.isViewingOriginal) dispatchSettings({ type: 'SET_IS_VIEWING_ORIGINAL', payload: false })}}
       >
         {settings.isViewingOriginal ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
-        {settings.isViewingOriginal ? "Ver Editada" : "Ver Original"}
+        {settings.isViewingOriginal ? "Ver Original" : "Ver Editada"}
       </Button>
-
 
       <div className="grid grid-cols-2 gap-2">
         <Button onClick={handleCopySettings} disabled={!originalImage} variant="outline" className="w-full">
@@ -346,7 +329,7 @@ export function ActionButtonsSection() {
         ) : (
           <Button
             onClick={handleDriveAction}
-            disabled={!isGapiClientInitialized || isConnectingOrSavingToDrive}
+            disabled={!isGapiClientInitialized || !isDriveSdkReady || isConnectingOrSavingToDrive}
             variant="outline"
             className="w-full"
           >
@@ -376,3 +359,4 @@ export function ActionButtonsSection() {
     </div>
   );
 }
+
