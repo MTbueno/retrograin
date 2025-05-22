@@ -3,36 +3,35 @@
 
 import type { Dispatch, ReactNode, RefObject } from 'react';
 import React, { createContext, useContext, useReducer, useState, useRef, useCallback, useEffect } from 'react';
-import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
+import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils'; // Keep for AdjustmentsSection if needed there
 
 export interface ImageSettings {
-  brightness: number;
-  contrast: number;
-  saturation: number;
-  vibrance: number;
-  exposure: number;
-  highlights: number;
-  shadows: number;
-  whites: number;
-  blacks: number;
-  // sharpness: number; // Removed
-  // hueRotate: number; // Temporarily disabled for WebGL transition
-  vignetteIntensity: number;
-  grainIntensity: number;
-  colorTemperature: number;
-  tintShadowsColor: string;
-  tintShadowsIntensity: number;
-  tintShadowsSaturation: number;
-  tintHighlightsColor: string;
-  tintHighlightsIntensity: number;
-  tintHighlightsSaturation: number;
-  rotation: number; // 0, 90, 180, 270
-  scaleX: number; // 1 or -1 (flip horizontal)
-  scaleY: number; // 1 or -1 (flip vertical)
-  cropZoom: number; // 1 = no zoom, >1 = zoom in
-  cropOffsetX: number; // -1 to 1
-  cropOffsetY: number; // -1 to 1
-  filter: string | null; // For preset CSS filters, temporarily disabled for WebGL
+  brightness: number; // WebGL
+  contrast: number;   // WebGL
+  saturation: number; // WebGL
+  vibrance: number;   // WebGL
+  exposure: number;   // WebGL
+  highlights: number; // WebGL
+  shadows: number;    // WebGL
+  whites: number;     // WebGL
+  blacks: number;     // WebGL
+  hueRotate: number;  // WebGL - NEW
+  vignetteIntensity: number; // TODO: WebGL
+  grainIntensity: number;    // TODO: WebGL
+  colorTemperature: number;  // WebGL - NEW
+  tintShadowsColor: string;  // WebGL - NEW
+  tintShadowsIntensity: number; // WebGL - NEW
+  tintShadowsSaturation: number; // WebGL - NEW
+  tintHighlightsColor: string; // WebGL - NEW
+  tintHighlightsIntensity: number; // WebGL - NEW
+  tintHighlightsSaturation: number; // WebGL - NEW
+  rotation: number; 
+  scaleX: number; 
+  scaleY: number; 
+  cropZoom: number; 
+  cropOffsetX: number;
+  cropOffsetY: number;
+  filter: string | null; // For preset CSS filters - To be reimplemented with WebGL if desired
 }
 
 export const initialImageSettings: ImageSettings = {
@@ -45,10 +44,10 @@ export const initialImageSettings: ImageSettings = {
   shadows: 0,
   whites: 0,
   blacks: 0,
-  // hueRotate: 0, // Temporarily disabled
+  hueRotate: 0, // Default 0 degrees
   vignetteIntensity: 0,
   grainIntensity: 0,
-  colorTemperature: 0,
+  colorTemperature: 0, // Default neutral
   tintShadowsColor: '#808080', 
   tintShadowsIntensity: 0,
   tintShadowsSaturation: 1,
@@ -61,7 +60,7 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
-  filter: null, // Temporarily disabled
+  filter: null,
 };
 
 export interface ImageObject {
@@ -82,7 +81,7 @@ export type SettingsAction =
   | { type: 'SET_SHADOWS'; payload: number }
   | { type: 'SET_WHITES'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
-  // | { type: 'SET_HUE_ROTATE'; payload: number } // Temporarily disabled
+  | { type: 'SET_HUE_ROTATE'; payload: number }
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
@@ -102,7 +101,7 @@ export type SettingsAction =
   | { type: 'RESET_CROP_AND_ANGLE' } 
   | { type: 'RESET_SETTINGS' }
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings }
-  | { type: 'APPLY_FILTER'; payload: string | null }; // Temporarily disabled
+  | { type: 'APPLY_FILTER'; payload: string | null };
 
 function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSettings {
   switch (action.type) {
@@ -124,8 +123,8 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, whites: action.payload };
     case 'SET_BLACKS':
       return { ...state, blacks: action.payload };
-    // case 'SET_HUE_ROTATE': // Temporarily disabled
-    //   return { ...state, hueRotate: action.payload };
+    case 'SET_HUE_ROTATE':
+      return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
@@ -160,7 +159,7 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, cropOffsetY: Math.max(-1, Math.min(1, action.payload)) };
     case 'RESET_CROP_AND_ANGLE': 
       return { ...state, cropZoom: 1, cropOffsetX: 0, cropOffsetY: 0 };
-    case 'APPLY_FILTER': // Temporarily disabled
+    case 'APPLY_FILTER':
       return { ...state, filter: action.payload };
     case 'RESET_SETTINGS':
       return { ...initialImageSettings, 
@@ -178,31 +177,7 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
   }
 }
 
-/*
-// applyCssFiltersToContext is temporarily disabled for WebGL transition
-export const applyCssFiltersToContext = (ctx: CanvasRenderingContext2D, settings: ImageSettings) => {
-  // ... existing logic ...
-  // This function will need to be replaced with WebGL shader logic
-  console.warn("applyCssFiltersToContext is a 2D Canvas function and will not work with WebGL.");
-};
-*/
-
-const NOISE_CANVAS_SIZE = 250;
-
-// drawImageWithSettingsToContext is temporarily disabled/modified for WebGL transition
-export const drawImageWithSettingsToContext = (
-  _ctx: CanvasRenderingContext2D, // This will be unused in WebGL context for export
-  imageToDraw: HTMLImageElement,
-  imageSettings: ImageSettings,
-  targetCanvasWidth: number, 
-  targetCanvasHeight: number, 
-  noiseImageData: ImageData | null 
-) => {
-    console.warn("drawImageWithSettingsToContext needs to be reimplemented for WebGL export.");
-    // For now, this function will not produce an image from WebGL
-    // Placeholder for future WebGL offscreen rendering
-    return;
-};
+const NOISE_CANVAS_SIZE = 250; // Keep for ImageCanvas.tsx to generate ImageData
 
 interface ImageEditorContextType {
   originalImage: HTMLImageElement | null;
@@ -214,18 +189,15 @@ interface ImageEditorContextType {
   addImageObject: (imageObject: Omit<ImageObject, 'id' | 'thumbnailDataUrl'>) => void;
   removeImage: (id: string) => void;
   setActiveImageId: (id: string | null) => void;
-  canvasRef: RefObject<HTMLCanvasElement>; // Will be used for WebGL
+  canvasRef: RefObject<HTMLCanvasElement>; 
   noiseImageDataRef: RefObject<ImageData | null>; 
-  getCanvasDataURL: (type?: string, quality?: number)
-    => string | null; // Temporarily disabled
-  generateImageDataUrlWithSettings: (imageElement: HTMLImageElement, settings: ImageSettings, type?: string, quality?: number)
-    => Promise<string | null>; // Temporarily disabled
-  isPreviewing: boolean; // Might be less relevant with WebGL immediate mode
+  getCanvasDataURL: (type?: string, quality?: number) => string | null;
+  generateImageDataUrlWithSettings: (imageElement: HTMLImageElement, settings: ImageSettings, type?: string, quality?: number) => Promise<string | null>;
+  isPreviewing: boolean;
   setIsPreviewing: (isPreviewing: boolean) => void;
   copiedSettings: ImageSettings | null;
   copyActiveSettings: () => void;
   pasteSettingsToActiveImage: () => void;
-  // applyCssFilters: (ctx: CanvasRenderingContext2D, settings: ImageSettings) => void; // Temporarily disabled
 }
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
@@ -264,7 +236,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
   const [currentBaseFileName, setCurrentBaseFileName] = useState<string>('retrograin_image');
   const [currentSettings, dispatchSettings] = useReducer(settingsReducer, initialImageSettings);
 
-  const [isPreviewing, setIsPreviewing] = useState(false); // May be less used with WebGL
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const noiseImageDataRef = useRef<ImageData | null>(null); 
   const [copiedSettings, setCopiedSettings] = useState<ImageSettings | null>(null);
@@ -325,8 +297,8 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [allImages, activeImageId, setActiveImageId]);
 
-  const getCanvasDataURL = useCallback(() => { // Temporarily disabled for WebGL
-    console.warn("getCanvasDataURL is temporarily disabled during WebGL upgrade. Export will not work.");
+  const getCanvasDataURL = useCallback((type: string = 'image/jpeg', quality: number = 0.92): string | null => {
+    console.warn("getCanvasDataURL needs to be reimplemented for WebGL export.");
     return null;
   }, []); 
 
@@ -357,15 +329,56 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [activeImageId, copiedSettings, allImages]);
 
+
+  const drawImageWithSettingsToContext = useCallback(
+    (
+      _ctx: WebGLRenderingContext, // Changed to WebGLRenderingContext
+      imageToDraw: HTMLImageElement,
+      imageSettings: ImageSettings,
+      targetCanvas: HTMLCanvasElement, // Changed to HTMLCanvasElement
+      _noiseImageData: ImageData | null // Kept for future reference or consistency
+    ) => {
+    console.warn("drawImageWithSettingsToContext needs to be fully reimplemented for WebGL rendering to an offscreen canvas/texture.");
+    // Placeholder for future WebGL offscreen rendering
+    // For now, this function will not produce an image directly from WebGL context
+    // It would involve setting up a new WebGL context for the targetCanvas (if different),
+    // compiling shaders, setting uniforms from imageSettings, drawing the imageToDraw as a texture,
+    // and then reading pixels back if necessary (which is slow).
+    // A more common approach for WebGL export is to render to a framebuffer and then toDataURL.
+    return;
+  }, []);
+
   const generateImageDataUrlWithSettings = useCallback(async (
-    // imageElement: HTMLImageElement, // Temporarily disabled for WebGL
-    // settingsToApply: ImageSettings,
-    // type: string = 'image/jpeg',
-    // quality: number = 0.92
-  ): Promise<string | null> => { // Temporarily disabled for WebGL
-    console.warn("generateImageDataUrlWithSettings is temporarily disabled during WebGL upgrade. ZIP export will not work.");
-    return Promise.resolve(null);
-  }, []); 
+    imageElement: HTMLImageElement,
+    settingsToApply: ImageSettings,
+    type: string = 'image/jpeg',
+    quality: number = 0.92
+  ): Promise<string | null> => {
+    console.warn("generateImageDataUrlWithSettings is temporarily disabled during WebGL upgrade. ZIP export will not work as expected.");
+    // This function needs a full WebGL reimplementation to generate an image.
+    // For now, to prevent errors, it will return a placeholder or the original image's data URL (if easily accessible).
+    // This is NOT a WebGL render.
+    /*
+    const offscreenCanvas = document.createElement('canvas');
+    const gl = offscreenCanvas.getContext('webgl');
+    if (!gl) {
+      console.error("WebGL not supported for offscreen rendering.");
+      return null;
+    }
+    // TODO: Implement full WebGL rendering pipeline here for export
+    // This would involve:
+    // 1. Setting offscreenCanvas.width/height based on imageElement and cropZoom
+    // 2. Initializing shaders, program, buffers for this offscreen GL context
+    // 3. Loading imageElement as a texture
+    // 4. Setting all uniforms from settingsToApply
+    // 5. Drawing the scene
+    // 6. Reading pixels back (e.g., gl.readPixels()) and converting to a data URL,
+    //    OR rendering to a texture and then drawing that texture to a 2D canvas to use toDataURL().
+    // The latter (render to texture then 2D canvas) is often easier for export.
+    return imageElement.src; // Placeholder
+    */
+    return null; 
+  }, [drawImageWithSettingsToContext, noiseImageDataRef]); 
 
 
   return (
@@ -389,7 +402,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         copiedSettings,
         copyActiveSettings,
         pasteSettingsToActiveImage,
-        // applyCssFilters: applyCssFiltersToContext, // Temporarily disabled
       }}
     >
       {children}

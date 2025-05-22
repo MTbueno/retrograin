@@ -24,3 +24,9 @@ export const desaturateRgb = (rgb: { r: number; g: number; b: number }, saturati
     b: Math.round(rgb.b * saturation + gray * (1 - saturation)),
   };
 };
+
+export const hexToRgbNormalizedArray = (hex: string): [number, number, number] | null => {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  return [rgb.r / 255, rgb.g / 255, rgb.b / 255];
+};
