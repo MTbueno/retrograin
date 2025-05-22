@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.15_tilt_fix_reapplied";
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.16_transform_rework";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -60,7 +60,5 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    
 
     
