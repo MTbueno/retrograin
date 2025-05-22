@@ -18,7 +18,8 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_VERSION_STRING = "alpha 0.3_webgl.20_perf_preview_fix_jiggle_v2";
+// Change this string to update the displayed version
+const CURRENT_VERSION_STRING = "alpha 0.3_webgl.20_perf_preview_fix_jiggle_v2_more_logs";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -49,8 +50,6 @@ export function ControlPanel() {
             <SelectiveColorSection />
             <SidebarSeparator />
             <TransformsSection />
-            {/* EffectSettingsSection was here, now part of AdjustmentsSection or separate */}
-            {/* FiltersSection was removed */}
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
@@ -63,3 +62,4 @@ export function ControlPanel() {
   );
 }
 
+    
