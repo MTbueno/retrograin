@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.14_crop_pan_fix1"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.15_tilt";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -26,7 +26,6 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    // Define a versão aqui para garantir que seja consistente e só renderize no cliente
     setAppVersion(CURRENT_PROJECT_VERSION);
   }, []);
 
@@ -61,4 +60,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
