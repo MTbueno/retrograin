@@ -52,9 +52,13 @@ export function ImageCanvas() {
   const MAX_WIDTH_STANDARD_RATIO = 800;
   const MAX_WIDTH_WIDE_RATIO = 960;
   const MAX_PHYSICAL_HEIGHT_CAP = 1000;
-  const PREVIEW_SCALE_FACTOR = 0.5;
+  // const PREVIEW_SCALE_FACTOR = 0.5; // Not used in current WebGL basic render
 
-  const checkGLError = useCallback((gl: WebGLRenderingContext, operation: string) => {
+  const checkGLError = useCallback((gl: WebGLRenderingContext | null, operation: string) => {
+    if (!gl) {
+        // console.warn(`WebGL context not available for ${operation}`);
+        return true; // Indicate error if gl context is missing
+    }
     const error = gl.getError();
     if (error !== gl.NO_ERROR) {
       let errorMsg = "WebGL Error: Unknown error";
@@ -71,6 +75,22 @@ export function ImageCanvas() {
     return false;
   }, []);
 
+  const loadShader = useCallback((gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null => {
+    const shader = gl.createShader(type);
+    if (!shader) {
+      console.error("Failed to create shader of type: " + type);
+      return null;
+    }
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }, []);
 
   const initShaderProgram = useCallback((gl: WebGLRenderingContext, vsSource: string, fsSource: string): ProgramInfo | null => {
     const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
@@ -110,30 +130,13 @@ export function ImageCanvas() {
       },
     };
 
-    if (programInfo.attribLocations.vertexPosition === -1) console.error("Vertex position attribute not found.");
-    if (programInfo.attribLocations.textureCoord === -1) console.error("Texture coordinate attribute not found.");
-    if (programInfo.uniformLocations.sampler === null) console.error("Sampler uniform not found.");
+    if (programInfo.attribLocations.vertexPosition === -1) console.error("Vertex position attribute (aVertexPosition) not found in shader.");
+    if (programInfo.attribLocations.textureCoord === -1) console.error("Texture coordinate attribute (aTextureCoord) not found in shader.");
+    if (programInfo.uniformLocations.sampler === null) console.error("Sampler uniform (uSampler) not found in shader.");
     
     console.log("Program info created:", programInfo);
     return programInfo;
-  }, [checkGLError]);
-
-  const loadShader = useCallback((gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null => {
-    const shader = gl.createShader(type);
-    if (!shader) {
-      console.error("Failed to create shader of type: " + type);
-      return null;
-    }
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
-      gl.deleteShader(shader);
-      return null;
-    }
-    return shader;
-  }, []);
+  }, [checkGLError, loadShader]);
 
   const initBuffers = useCallback((gl: WebGLRenderingContext): Buffers | null => {
     const positionBuffer = gl.createBuffer();
@@ -142,11 +145,11 @@ export function ImageCanvas() {
       return null;
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    const positions = [
-      -1.0, -1.0,
-       1.0, -1.0,
-      -1.0,  1.0,
-       1.0,  1.0,
+    const positions = [ // Full-screen quad
+      -1.0, -1.0, // bottom left
+       1.0, -1.0, // bottom right
+      -1.0,  1.0, // top left
+       1.0,  1.0, // top right
     ];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
@@ -157,10 +160,10 @@ export function ImageCanvas() {
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
     const textureCoordinates = [
-      0.0,  0.0,
-      1.0,  0.0,
-      0.0,  1.0,
-      1.0,  1.0,
+      0.0,  0.0, // bottom left
+      1.0,  0.0, // bottom right
+      0.0,  1.0, // top left
+      1.0,  1.0, // top right
     ];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
     console.log("Buffers initialized.");
@@ -175,30 +178,122 @@ export function ImageCanvas() {
         return null;
     }
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
     
-    if (checkGLError(gl, "loadTexture - after texImage2D")) return null;
-
+    // Set the parameters so we can render any size image.
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+    // Upload the image into the texture.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // Flip Y to match WebGL coord system
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    
+    if (checkGLError(gl, "loadTexture - after texImage2D")) {
+        gl.deleteTexture(texture); // Clean up if error
+        return null;
+    }
     
     console.log("Texture loaded successfully from image:", image.src.substring(0,50) + "...");
-    checkGLError(gl, "loadTexture - after texParameteri");
     return texture;
   }, [checkGLError]);
+
+  // Draw scene
+  const drawScene = useCallback(() => {
+    const gl = glRef.current;
+    const programInfo = programInfoRef.current;
+    const buffers = buffersRef.current;
+    const canvas = canvasRef.current;
+    const currentTexture = textureRef.current;
+
+    // console.log("drawScene called. GL:", !!gl, "ProgramInfo:", !!programInfo, "Buffers:", !!buffers, "Canvas:", !!canvas, "Texture:", !!currentTexture, "OriginalImage:", !!originalImage);
+    if (checkGLError(gl, "drawScene - start")) return;
+
+    if (!gl || !programInfo || !buffers || !canvas) {
+      // console.warn("drawScene: WebGL context, programInfo, buffers or canvas not ready. Skipping draw.");
+      return;
+    }
+
+    let canvasPhysicalWidth = canvas.clientWidth;
+    let canvasPhysicalHeight = canvas.clientHeight;
+
+    if (originalImage) {
+        const aspectRatio = originalImage.naturalWidth / originalImage.naturalHeight;
+        let targetWidth, targetHeight;
+
+        targetWidth = Math.min(MAX_WIDTH_STANDARD_RATIO, originalImage.naturalWidth);
+        if (originalImage.naturalWidth > MAX_WIDTH_STANDARD_RATIO) {
+            targetHeight = targetWidth / aspectRatio;
+        } else {
+            targetHeight = originalImage.naturalHeight;
+        }
+        if (targetHeight > MAX_PHYSICAL_HEIGHT_CAP) {
+            targetHeight = MAX_PHYSICAL_HEIGHT_CAP;
+            targetWidth = targetHeight * aspectRatio;
+        }
+        
+        if (targetWidth > (aspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO) ) {
+             targetWidth = aspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO;
+             targetHeight = targetWidth / aspectRatio;
+        }
+        
+        canvasPhysicalWidth = Math.round(targetWidth);
+        canvasPhysicalHeight = Math.round(targetHeight);
+
+    } else {
+      canvasPhysicalWidth = canvas.clientWidth || 300; 
+      canvasPhysicalHeight = canvas.clientHeight || 150;
+    }
+    
+    if (canvas.width !== canvasPhysicalWidth || canvas.height !== canvasPhysicalHeight) {
+        canvas.width = canvasPhysicalWidth;
+        canvas.height = canvasPhysicalHeight;
+        console.log(`drawScene: Canvas dimensions set to ${canvas.width}x${canvas.height}`);
+    }
+    
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    checkGLError(gl, "drawScene - after viewport");
+
+    gl.clearColor(0.188, 0.188, 0.188, 1.0); // Approx #303030
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    checkGLError(gl, "drawScene - after clear");
+
+    if (!originalImage || !currentTexture) {
+        return; 
+    }
+
+    gl.useProgram(programInfo.program);
+    checkGLError(gl, "drawScene - after useProgram");
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+    gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+    checkGLError(gl, "drawScene - after position attribute");
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
+    gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
+    checkGLError(gl, "drawScene - after texCoord attribute");
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+    gl.uniform1i(programInfo.uniformLocations.sampler, 0); 
+    checkGLError(gl, "drawScene - after texture binding");
+    
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); 
+    checkGLError(gl, "drawScene - after drawArrays");
+
+  }, [originalImage, canvasRef, checkGLError]);
+
 
   // Initialize WebGL context, shaders, program
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas && !glRef.current) {
       console.log("Attempting to initialize WebGL context...");
-      const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true }); // preserveDrawingBuffer true for debugging
+      const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true }); 
       if (!gl) {
         console.error("Unable to initialize WebGL. Your browser or machine may not support it.");
-        alert("WebGL não está disponível. Seu navegador pode não suportar esta funcionalidade.");
         return;
       }
       glRef.current = gl;
@@ -221,17 +316,16 @@ export function ImageCanvas() {
         console.error("Failed to initialize WebGL buffers.");
         return;
       }
-      // Initial draw call might be needed here if an image is already present or to clear
-       requestAnimationFrame(drawScene);
+       requestAnimationFrame(drawScene); // Initial draw
     }
-  }, [canvasRef, initShaderProgram, initBuffers, drawScene]); // Removed drawScene from here to avoid re-init on its change
+  }, [canvasRef, initShaderProgram, initBuffers]); // Removed drawScene from dependency array
 
 
   // Load texture when originalImage changes
   useEffect(() => {
     const gl = glRef.current;
-    console.log("Texture load effect triggered. originalImage:", originalImage ? originalImage.src.substring(0,50) + "..." : "null", "gl:", !!gl);
-    if (gl && programInfoRef.current && buffersRef.current) {
+    console.log("Texture load effect triggered. originalImage:", originalImage ? "Image available" : "null", "gl:", !!gl);
+    if (gl && programInfoRef.current && buffersRef.current) { 
       if (originalImage) {
         if (textureRef.current) {
           gl.deleteTexture(textureRef.current);
@@ -243,7 +337,7 @@ export function ImageCanvas() {
             console.log("New texture created and assigned to textureRef.current.");
         } else {
             console.error("Failed to load new texture from originalImage.");
-            textureRef.current = null; // Ensure it's null if loading failed
+            textureRef.current = null; 
         }
       } else {
         if (textureRef.current) {
@@ -252,129 +346,37 @@ export function ImageCanvas() {
           console.log("originalImage is null, deleted texture.");
         }
       }
-      // Always request a draw to update the canvas (either with new texture or to clear it)
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       animationFrameIdRef.current = requestAnimationFrame(drawScene);
       console.log("Requested drawScene after texture update/clear.");
     } else {
-      console.warn("Texture load effect: GL, programInfo, or buffers not ready.");
+      console.warn("Texture load effect: GL, programInfo, or buffers not ready yet.");
     }
-  }, [originalImage, loadTexture, drawScene]); // drawScene is a dependency here because it needs to be called
+  }, [originalImage, loadTexture, drawScene]); 
 
-  // Draw scene
-  const drawScene = useCallback(() => {
-    const gl = glRef.current;
-    const programInfo = programInfoRef.current;
-    const buffers = buffersRef.current;
-    const canvas = canvasRef.current;
-    const currentTexture = textureRef.current;
-
-    // console.log("drawScene called. GL:", !!gl, "ProgramInfo:", !!programInfo, "Buffers:", !!buffers, "Canvas:", !!canvas, "Texture:", !!currentTexture, "OriginalImage:", !!originalImage);
-    checkGLError(gl, "drawScene - start");
-
-    if (!gl || !programInfo || !buffers || !canvas) {
-      // console.warn("drawScene: WebGL context, programInfo, buffers or canvas not ready. Skipping draw.");
-      return;
-    }
-
-    let canvasPhysicalWidth = 0;
-    let canvasPhysicalHeight = 0;
-
-    if (originalImage) {
-        const aspectRatio = originalImage.naturalWidth / originalImage.naturalHeight;
-        let targetWidth, targetHeight;
-
-        if (aspectRatio > 1) { // Landscape or square
-            targetWidth = aspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO;
-            targetHeight = targetWidth / aspectRatio;
-        } else { // Portrait
-            targetHeight = MAX_PHYSICAL_HEIGHT_CAP; // Using MAX_PHYSICAL_HEIGHT_CAP as the primary constraint
-            targetWidth = targetHeight * aspectRatio;
-            if (targetWidth > MAX_WIDTH_STANDARD_RATIO) {
-                targetWidth = MAX_WIDTH_STANDARD_RATIO;
-                targetHeight = targetWidth / aspectRatio;
-            }
-        }
-        canvasPhysicalWidth = Math.round(targetWidth);
-        canvasPhysicalHeight = Math.round(targetHeight);
-    } else {
-      // Default size if no image, or use parent size if preferred.
-      // For now, let's use a small default or rely on CSS if no image.
-      // But if we are here, and originalImage is null, we should just clear.
-      canvasPhysicalWidth = canvas.clientWidth || 300; // Fallback if no image yet for sizing
-      canvasPhysicalHeight = canvas.clientHeight || 150;
-    }
-    
-    canvas.width = canvasPhysicalWidth;
-    canvas.height = canvasPhysicalHeight;
-    
-    // console.log(`drawScene: Canvas dimensions set to ${canvas.width}x${canvas.height}`);
-
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    // console.log(`drawScene: Viewport set to 0,0,${gl.drawingBufferWidth},${gl.drawingBufferHeight}`);
-    checkGLError(gl, "drawScene - after viewport");
-
-
-    gl.clearColor(0.188, 0.188, 0.188, 1.0); // Approx #303030
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    checkGLError(gl, "drawScene - after clear");
-
-    if (!originalImage || !currentTexture) {
-        // console.log("drawScene: No original image or texture, canvas cleared.");
-        return; // Only clear if no image or texture
-    }
-
-    gl.useProgram(programInfo.program);
-    checkGLError(gl, "drawScene - after useProgram");
-
-    // Position attribute
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-    gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
-    checkGLError(gl, "drawScene - after position attribute");
-
-    // Texture coordinate attribute
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
-    gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
-    checkGLError(gl, "drawScene - after texCoord attribute");
-
-    // Specify the texture to map
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, currentTexture);
-    gl.uniform1i(programInfo.uniformLocations.sampler, 0); // Tell the shader we bound the texture to texture unit 0
-    checkGLError(gl, "drawScene - after texture binding");
-    
-    // console.log("drawScene: Attempting to draw arrays...");
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    checkGLError(gl, "drawScene - after drawArrays");
-    // console.log("drawScene: Draw call completed.");
-
-    // Request next frame if needed for animations (not currently used for static image)
-    // if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-    // animationFrameIdRef.current = requestAnimationFrame(drawScene);
-  }, [originalImage, canvasRef, checkGLError]); // Removed glRef, programInfoRef, buffersRef, textureRef from deps to simplify
-
-  // Effect for redrawing when settings change (will be used later for applying effects)
+  // Effect for redrawing when settings or isPreviewing change (will be used for applying effects later)
    useEffect(() => {
-     if (glRef.current && programInfoRef.current && buffersRef.current) {
+     if (glRef.current && programInfoRef.current && buffersRef.current && originalImage) { 
        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
        animationFrameIdRef.current = requestAnimationFrame(drawScene);
-       // console.log("Requested drawScene due to settings or isPreviewing change.");
      }
-   }, [settings, isPreviewing, drawScene]);
+   }, [settings, isPreviewing, drawScene, originalImage]);
 
 
   // Cleanup WebGL resources on unmount
   useEffect(() => {
+    const currentGl = glRef.current; 
+    const currentProgInfo = programInfoRef.current;
+    const currentBuffers = buffersRef.current;
+    const currentTexture = textureRef.current;
+
     return () => {
-      const gl = glRef.current;
-      if (gl) {
-        if (textureRef.current) gl.deleteTexture(textureRef.current);
-        if (programInfoRef.current) gl.deleteProgram(programInfoRef.current.program);
-        if (buffersRef.current) {
-          gl.deleteBuffer(buffersRef.current.position);
-          gl.deleteBuffer(buffersRef.current.textureCoord);
+      if (currentGl) {
+        if (currentTexture) currentGl.deleteTexture(currentTexture);
+        if (currentProgInfo) currentGl.deleteProgram(currentProgInfo.program);
+        if (currentBuffers) {
+          currentGl.deleteBuffer(currentBuffers.position);
+          currentGl.deleteBuffer(currentBuffers.textureCoord);
         }
         console.log("WebGL resources cleaned up.");
       }
@@ -382,7 +384,7 @@ export function ImageCanvas() {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, []);
+  }, []); 
 
 
   if (!originalImage) {
@@ -397,7 +399,7 @@ export function ImageCanvas() {
     <canvas
       ref={canvasRef}
       className="max-w-full max-h-full object-contain rounded-md shadow-lg"
-      style={{ imageRendering: 'pixelated' }}
     />
   );
 }
+
