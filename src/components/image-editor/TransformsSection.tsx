@@ -110,7 +110,8 @@ export function TransformsSection() {
           onValueChange={(val) => handleTransformSliderChange(control.id as any, val[0])}
           onValueCommit={(val) => handleTransformSliderCommit(control.id as any, val[0])}
           onPointerDown={() => {
-            if (originalImage) setIsPreviewing(true);
+            if (!originalImage) return;
+            setIsPreviewing(true);
           }}
           disabled={!originalImage}
         />

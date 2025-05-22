@@ -44,7 +44,8 @@ export function SelectiveColorSection() {
     type: 'hue' | 'saturation' | 'luminance',
     value: number
   ) => {
-    if (originalImage) setIsPreviewing(true);
+    if (!originalImage) return;
+    setIsPreviewing(true);
     throttledDispatch({
       type: 'SET_SELECTIVE_COLOR_ADJUSTMENT',
       payload: {
@@ -58,6 +59,7 @@ export function SelectiveColorSection() {
     type: 'hue' | 'saturation' | 'luminance',
     value: number
   ) => {
+    if (!originalImage) return;
     dispatchSettings({
       type: 'SET_SELECTIVE_COLOR_ADJUSTMENT',
       payload: {
@@ -65,13 +67,13 @@ export function SelectiveColorSection() {
         adjustment: { [type]: value },
       },
     });
-    if (originalImage) setIsPreviewing(false);
+    setIsPreviewing(false);
   };
 
   const adjustmentControls = [
     { id: 'hue', label: 'Hue', icon: Palette, value: currentAdjustments.hue, min: -0.1, max: 0.1, step: 0.005 }, 
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: currentAdjustments.saturation, min: -0.5, max: 0.5, step: 0.01 },
-    { id: 'luminance', label: 'Luminance', icon: Sun, value: currentAdjustments.luminance, min: -0.5, max: 0.5, step: 0.01 },
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: currentAdjustments.saturation, min: -0.5, max: 0.5, step: 0.01 }, // Range halved
+    { id: 'luminance', label: 'Luminance', icon: Sun, value: currentAdjustments.luminance, min: -0.5, max: 0.5, step: 0.01 }, // Range halved
   ];
 
   return (
@@ -106,7 +108,7 @@ export function SelectiveColorSection() {
             </Label>
             <span className="text-xs text-muted-foreground">
               {control.id === 'hue' 
-                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.5 / 0.5))}°` // Max UI is 180deg, shader is +/- 0.5
+                ? `${Math.round((currentAdjustments.hue ?? 0) * 180 / (0.5 / (0.1 / 0.5)))}°` // Adjusted for new range -0.1 to 0.1
                 : `${Math.round((control.value ?? 0) * 100)}%`}
             </span>
           </div>
@@ -123,7 +125,8 @@ export function SelectiveColorSection() {
               handleAdjustmentCommit(control.id as 'hue' | 'saturation' | 'luminance', val[0]);
             }}
             onPointerDown={() => {
-              if (originalImage) setIsPreviewing(true);
+              if (!originalImage) return;
+              setIsPreviewing(true);
             }}
             disabled={!originalImage}
           />
