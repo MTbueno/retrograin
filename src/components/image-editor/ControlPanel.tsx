@@ -19,7 +19,7 @@ import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Change this string to update the displayed version
-const CURRENT_VERSION_STRING = "alpha 0.3_webgl.20_perf_preview_fix_jiggle_v2_more_logs";
+const CURRENT_VERSION_STRING = "alpha 0.3_webgl.24_texture_downscale";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -61,5 +61,3 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
-    
