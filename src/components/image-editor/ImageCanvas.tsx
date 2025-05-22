@@ -115,7 +115,6 @@ const fsSource = `
   }
 
   // Hue ranges (normalized 0-1, approximate)
-  // These might need fine-tuning for better selectivity
   const float HUE_RED_MAX = 0.05;      // around 18 degrees
   const float HUE_RED_MIN = 0.95;      // around 342 degrees (wraps around)
   const float HUE_ORANGE_MIN = 0.05;
@@ -178,7 +177,7 @@ const fsSource = `
     float white_point_adjust = u_whites * 0.15; 
     color -= black_point_adjust;
     float range = 1.0 + white_point_adjust - black_point_adjust;
-    if (range <= 0.0) range = 0.001;
+    if (range <= 0.0) range = 0.001; // Avoid division by zero or negative
     color /= range;
     color = clamp(color, 0.0, 1.0);
 
@@ -355,7 +354,9 @@ export function ImageCanvas() {
     gl.compileShader(shader);
 
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error(`An error occurred compiling the shader (${type === gl.VERTEX_SHADER ? 'Vertex' : 'Fragment'}): ${gl.getShaderInfoLog(shader)}`);
+      const shaderType = type === gl.VERTEX_SHADER ? 'Vertex' : 'Fragment';
+      console.error(`An error occurred compiling the ${shaderType} shader: ${gl.getShaderInfoLog(shader)}`);
+      // console.error("Shader source:\n" + source.split('\n').map((line, i) => `${i + 1}: ${line}`).join('\n'));
       gl.deleteShader(shader);
       return null;
     }
@@ -433,7 +434,7 @@ export function ImageCanvas() {
     };
     // console.log("Shader Program Initialized. Locations verified.");
     return progInfo;
-  }, [loadShader]);
+  }, [loadShader, checkGLError]);
 
   const initBuffers = useCallback((gl: WebGLRenderingContext): Buffers | null => {
     const positionBuffer = gl.createBuffer();
@@ -499,7 +500,6 @@ export function ImageCanvas() {
     const currentTexture = textureRef.current;
 
     if (!gl || !programInfo || !currentBuffers || !canvas || !isInitializedRef.current) {
-      // console.warn("drawScene: WebGL not fully initialized or canvas not available.");
       return;
     }
     
@@ -515,38 +515,47 @@ export function ImageCanvas() {
     
     let baseCanvasWidth: number;
     let baseCanvasHeight: number;
-    const contentAspectRatio = imgNatWidth / imgNatHeight;
-
-    if (contentAspectRatio > 1) { 
-        baseCanvasWidth = Math.min(imgNatWidth, (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO));
-        baseCanvasHeight = baseCanvasWidth / contentAspectRatio;
-    } else { 
-        baseCanvasHeight = Math.min(imgNatHeight, MAX_PHYSICAL_HEIGHT_CAP);
-        baseCanvasWidth = baseCanvasHeight * contentAspectRatio;
-        if (baseCanvasWidth > MAX_WIDTH_STANDARD_RATIO) {
-            baseCanvasWidth = MAX_WIDTH_STANDARD_RATIO;
-            baseCanvasHeight = baseCanvasWidth / contentAspectRatio;
-        }
-    }
-    baseCanvasWidth = Math.max(1, Math.round(baseCanvasWidth));
-    baseCanvasHeight = Math.max(1, Math.round(baseCanvasHeight));
-    
-    let finalCanvasWidth = baseCanvasWidth;
-    let finalCanvasHeight = baseCanvasHeight;
 
     if (settings.rotation === 90 || settings.rotation === 270) {
-        const temp = finalCanvasWidth;
-        finalCanvasWidth = finalCanvasHeight;
-        finalCanvasHeight = temp;
+        baseCanvasWidth = imgNatHeight;
+        baseCanvasHeight = imgNatWidth;
+    } else {
+        baseCanvasWidth = imgNatWidth;
+        baseCanvasHeight = imgNatHeight;
     }
+    
+    const contentAspectRatio = baseCanvasWidth / baseCanvasHeight;
+    let finalCanvasWidth: number;
+    let finalCanvasHeight: number;
 
-    const currentPreviewFactor = isPreviewing ? PREVIEW_SCALE_FACTOR : 1.0;
-    const effectiveCanvasWidth = Math.round(finalCanvasWidth * currentPreviewFactor);
-    const effectiveCanvasHeight = Math.round(finalCanvasHeight * currentPreviewFactor);
+    if (contentAspectRatio > 1) { 
+        finalCanvasWidth = Math.min(baseCanvasWidth, (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO));
+        finalCanvasHeight = finalCanvasWidth / contentAspectRatio;
+    } else { 
+        finalCanvasHeight = Math.min(baseCanvasHeight, MAX_PHYSICAL_HEIGHT_CAP);
+        finalCanvasWidth = finalCanvasHeight * contentAspectRatio;
+        if (finalCanvasWidth > MAX_WIDTH_STANDARD_RATIO) {
+            finalCanvasWidth = MAX_WIDTH_STANDARD_RATIO;
+            finalCanvasHeight = finalCanvasWidth / contentAspectRatio;
+        }
+    }
+    finalCanvasWidth = Math.max(1, Math.round(finalCanvasWidth));
+    finalCanvasHeight = Math.max(1, Math.round(finalCanvasHeight));
+    
+    let effectiveCanvasWidth = finalCanvasWidth;
+    let effectiveCanvasHeight = finalCanvasHeight;
+
+    if (isPreviewing) {
+        effectiveCanvasWidth = Math.round(finalCanvasWidth * PREVIEW_SCALE_FACTOR);
+        // Maintain aspect ratio for preview
+        effectiveCanvasHeight = Math.round(effectiveCanvasWidth / (finalCanvasWidth / finalCanvasHeight));
+        effectiveCanvasWidth = Math.max(1, effectiveCanvasWidth);
+        effectiveCanvasHeight = Math.max(1, effectiveCanvasHeight);
+    }
     
     if (canvas.width !== effectiveCanvasWidth || canvas.height !== effectiveCanvasHeight) {
-        canvas.width = effectiveCanvasWidth > 0 ? effectiveCanvasWidth : 1;
-        canvas.height = effectiveCanvasHeight > 0 ? effectiveCanvasHeight : 1;
+        canvas.width = effectiveCanvasWidth;
+        canvas.height = effectiveCanvasHeight;
     }
     
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -629,10 +638,14 @@ export function ImageCanvas() {
 
     // Selective Color Uniforms
     const targetIndex = SELECTIVE_COLOR_TARGETS.indexOf(settings.activeSelectiveColorTarget);
-    if (programInfo.uniformLocations.selectedColorTargetIndex) {
+    if (programInfo.uniformLocations.selectedColorTargetIndex && targetIndex !== -1) { // Check if target is found
       gl.uniform1i(programInfo.uniformLocations.selectedColorTargetIndex, targetIndex);
+    } else if (targetIndex === -1) {
+        // console.warn(`Selective color target "${settings.activeSelectiveColorTarget}" not found in SELECTIVE_COLOR_TARGETS. Defaulting index.`);
+        if (programInfo.uniformLocations.selectedColorTargetIndex) gl.uniform1i(programInfo.uniformLocations.selectedColorTargetIndex, 0); // Default to first color if not found
     }
-    const currentSelective = settings.selectiveColors[settings.activeSelectiveColorTarget];
+
+    const currentSelective = settings.selectiveColors[settings.activeSelectiveColorTarget] || { hue: 0, saturation: 0, luminance: 0 }; // Fallback
     if (programInfo.uniformLocations.hueAdjustment) gl.uniform1f(programInfo.uniformLocations.hueAdjustment, currentSelective.hue);
     if (programInfo.uniformLocations.saturationAdjustment) gl.uniform1f(programInfo.uniformLocations.saturationAdjustment, currentSelective.saturation);
     if (programInfo.uniformLocations.luminanceAdjustment) gl.uniform1f(programInfo.uniformLocations.luminanceAdjustment, currentSelective.luminance);
@@ -642,15 +655,13 @@ export function ImageCanvas() {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); 
     checkGLError(gl, "drawScene - after drawArrays");
 
-  }, [originalImage, settings, canvasRef, isPreviewing, checkGLError]); // Removed loadTexture, initShaderProgram, initBuffers
+  }, [originalImage, settings, canvasRef, isPreviewing, checkGLError]); 
 
 
   useEffect(() => {
     if (!canvasRef.current) {
-      // console.log("ImageCanvas: Mount, canvasRef not ready yet.");
       return;
     }
-    // console.log("ImageCanvas: Mount, canvasRef IS ready.");
     
     let context = canvasRef.current.getContext('webgl', { preserveDrawingBuffer: true });
     if (!context) {
@@ -663,12 +674,10 @@ export function ImageCanvas() {
       return;
     }
     glRef.current = context;
-    // console.log("WebGL context successfully stored in glRef.");
 
     const pInfo = initShaderProgram(glRef.current);
     if (pInfo) {
       programInfoRef.current = pInfo;
-      // console.log("Shader program initialized and stored in programInfoRef.");
     } else {
       console.error("ImageCanvas: Shader program initialization failed.");
       glRef.current = null; 
@@ -679,7 +688,6 @@ export function ImageCanvas() {
     const bInfo = initBuffers(glRef.current);
     if (bInfo) {
       buffersRef.current = bInfo;
-      // console.log("WebGL buffers initialized and stored in buffersRef.");
     } else {
       console.error("ImageCanvas: WebGL buffer initialization failed.");
       glRef.current = null; 
@@ -688,7 +696,6 @@ export function ImageCanvas() {
       return;
     }
     isInitializedRef.current = true;
-    // console.log("ImageCanvas: WebGL initialized successfully (isInitializedRef = true). Requesting initial draw.");
     requestAnimationFrame(drawScene); 
   }, [canvasRef, initShaderProgram, initBuffers, drawScene]); 
 
@@ -696,40 +703,32 @@ export function ImageCanvas() {
   useEffect(() => {
     const gl = glRef.current;
     if (!gl || !isInitializedRef.current) {
-      // console.log("TextureLoad Effect: GL or initialization not ready.");
       return;
     }
 
     if (originalImage) {
       const imageElement = originalImage;
-      // console.log("TextureLoad Effect: originalImage present. Image complete:", imageElement.complete, "naturalWidth:", imageElement.naturalWidth);
 
       const attemptLoadFullTexture = () => {
         if (textureRef.current) {
-            // console.log("TextureLoad Effect: Deleting old texture.");
             gl.deleteTexture(textureRef.current);
             textureRef.current = null;
         }
-        // console.log("TextureLoad Effect: Calling loadTexture().");
         const newTexture = loadTexture(gl, imageElement);
         if (newTexture) {
             textureRef.current = newTexture;
-            // console.log("TextureLoad Effect: New texture loaded and set. Requesting draw.");
             requestAnimationFrame(drawScene); 
         } else {
             console.error("TextureLoad Effect: loadTexture() returned null.");
             textureRef.current = null; 
-            requestAnimationFrame(drawScene); // Draw to clear canvas if texture failed
+            requestAnimationFrame(drawScene); 
         }
       };
 
       if (imageElement.complete && imageElement.naturalWidth > 0) {
-          // console.log("TextureLoad Effect: Image already complete, attempting to load texture directly.");
           attemptLoadFullTexture();
       } else {
-          // console.log("TextureLoad Effect: Image not complete, adding event listeners.");
           const handleLoad = () => {
-              // console.log("TextureLoad Effect: Image onload event fired.");
               attemptLoadFullTexture();
               imageElement.removeEventListener('load', handleLoad);
               imageElement.removeEventListener('error', handleError);
@@ -742,26 +741,20 @@ export function ImageCanvas() {
                   gl.deleteTexture(textureRef.current);
                   textureRef.current = null;
               }
-              requestAnimationFrame(drawScene); // Draw to clear canvas
+              requestAnimationFrame(drawScene); 
           };
           imageElement.addEventListener('load', handleLoad);
           imageElement.addEventListener('error', handleError);
           
-          // If src is already set and image is somehow broken or loading state is stuck
           if (imageElement.src && (imageElement.complete || (imageElement as any).error)){
             if (imageElement.complete && imageElement.naturalWidth > 0) {
-                // console.log("TextureLoad Effect: Image was already complete (race condition?). Calling handleLoad.");
                 handleLoad();
             } else if ((imageElement as any).error) {
-                // console.log("TextureLoad Effect: Image had an error (race condition?). Calling handleError.");
                 handleError();
             }
-          } else if (!imageElement.src) {
-            // console.warn("TextureLoad Effect: originalImage has no src. This shouldn't happen.");
-          }
+          } 
       }
     } else { 
-      // console.log("TextureLoad Effect: originalImage is null. Clearing texture and requesting draw.");
       if (textureRef.current) {
         gl.deleteTexture(textureRef.current);
         textureRef.current = null;
@@ -780,11 +773,9 @@ export function ImageCanvas() {
       return;
     }
 
-    // Optimization: Only re-render if settings actually change.
     const currentSettingsString = JSON.stringify(settings);
     if (lastRenderedSettingsRef.current === currentSettingsString && !(settings.grainIntensity > 0.001)) {
-      // If only grain is active, we need the animation loop. Otherwise, if settings haven't changed, don't redraw.
-      // return;
+      // return; // Commented out to ensure drawScene is called on isPreviewing change
     }
     lastRenderedSettingsRef.current = currentSettingsString;
 
@@ -796,22 +787,19 @@ export function ImageCanvas() {
         return;
       }
       drawScene();
-      // Only continue loop if grain is active, for animation
       if (settings.grainIntensity > 0.001 ) { 
         animationFrameIdRef.current = requestAnimationFrame(renderLoop);
       } else {
-        animationFrameIdRef.current = null; // Stop loop if grain is off
+        animationFrameIdRef.current = null; 
       }
     };
     
-    // Initial draw for current settings or if grain animation needs to start/stop
-    requestAnimationFrame(drawScene); // Ensure at least one draw for new settings
+    requestAnimationFrame(drawScene); 
 
     if (settings.grainIntensity > 0.001) {
-        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current); // Clear any existing loop
-        animationFrameIdRef.current = requestAnimationFrame(renderLoop); // Start new loop
+        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current); 
+        animationFrameIdRef.current = requestAnimationFrame(renderLoop); 
     } else { 
-        // If grain is turned off, ensure the animation loop stops
         if (animationFrameIdRef.current) {
             cancelAnimationFrame(animationFrameIdRef.current);
             animationFrameIdRef.current = null;
@@ -825,12 +813,11 @@ export function ImageCanvas() {
         animationFrameIdRef.current = null;
       }
     };
-  }, [settings, originalImage, drawScene, isInitializedRef]); // drawScene might change if its deps change, but it's memoized by useCallback
+  }, [settings, originalImage, drawScene, isInitializedRef, isPreviewing]); // Added isPreviewing to dependencies
 
 
   useEffect(() => {
     return () => {
-      // console.log("ImageCanvas: Unmounting. Cleaning up WebGL resources.");
       const gl = glRef.current;
       const pInfo = programInfoRef.current;
       const bInfo = buffersRef.current;
@@ -861,7 +848,6 @@ export function ImageCanvas() {
       buffersRef.current = null;
       textureRef.current = null;
       isInitializedRef.current = false;
-      // console.log("ImageCanvas: WebGL resources cleaned up.");
     };
   }, []);
 
@@ -885,3 +871,4 @@ export function ImageCanvas() {
     />
   );
 }
+

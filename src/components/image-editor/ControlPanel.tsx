@@ -14,12 +14,12 @@ import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
 // import { FiltersSection } from './FiltersSection'; // Presets are not WebGL ready yet
-import { SelectiveColorSection } from './SelectiveColorSection'; // New
+import { SelectiveColorSection } from './SelectiveColorSection'; 
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.18_selective_color";
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.19_jiggle_fix";
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export function ControlPanel() {
             <SidebarSeparator />
             <AdjustmentsSection />
             <SidebarSeparator />
-            <SelectiveColorSection /> {/* Added Selective Color Section */}
+            <SelectiveColorSection /> 
             <SidebarSeparator />
             <TransformsSection />
             {/* <SidebarSeparator />
@@ -63,3 +63,4 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
+
