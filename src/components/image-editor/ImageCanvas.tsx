@@ -7,57 +7,58 @@ import { Card } from '@/components/ui/card';
 import { hexToRgbNormalizedArray } from '@/lib/colorUtils';
 
 // Constants for canvas size limits for preview rendering
-const MAX_WIDTH_STANDARD_RATIO = 720; 
-const MAX_WIDTH_WIDE_RATIO = 800;    
-const MAX_PHYSICAL_HEIGHT_CAP = 1000; 
-const MAX_TEXTURE_DIMENSION = 4096; 
-const NOISE_CANVAS_SIZE = 250;
+const MAX_WIDTH_STANDARD_RATIO = 720; // For aspect ratios <= 1.6 (e.g., 4:3, 1:1, 3:4)
+const MAX_WIDTH_WIDE_RATIO = 800;     // For aspect ratios > 1.6 (e.g., 16:9)
+const MAX_PHYSICAL_HEIGHT_CAP = 1000;  // Absolute cap on physical height for very tall images
+const MAX_TEXTURE_DIMENSION = 4096; // Max dimension for textures sent to GPU
 
-// Vertex Shader
+
+// Vertex Shader: Handles position, texture coordinates, and geometric transforms
 const vsSource = `
   attribute vec4 a_position;
   attribute vec2 a_texCoord;
 
-  uniform float u_rotationAngle; // 90-deg rotations
-  uniform vec2 u_scale;          // flipX, flipY
-  // uniform float u_tiltAngle; // Removed
-  uniform vec2 u_crop_tex_scale; // combined zoom (manual + auto for tilt)
-  uniform vec2 u_crop_tex_offset;// pan
+  uniform float u_rotationAngle; // 90-deg rotations (0, PI/2, PI, 3PI/2)
+  uniform vec2 u_scale;          // flipX, flipY (e.g., [1,1], [-1,1])
+  uniform vec2 u_crop_tex_scale; // zoom for crop (e.g., [1/zoom, 1/zoom])
+  uniform vec2 u_crop_tex_offset;// pan for crop
 
   varying highp vec2 v_textureCoord;
 
   void main(void) {
-    gl_Position = a_position;
+    gl_Position = a_position; // Vertex position in clip space
 
+    // Transform texture coordinates
     vec2 texCoord = a_texCoord;
-    texCoord -= 0.5; // Center to origin
-    
-    // Apply base transforms: flip, then 90-degree rotation
+    texCoord -= 0.5; // Center to origin (0,0)
+
+    // 1. Apply flip (scale)
     texCoord *= u_scale;
     
+    // 2. Apply 90-degree rotation
     float c90 = cos(u_rotationAngle);
     float s90 = sin(u_rotationAngle);
-    mat2 rotation90Matrix = mat2(c90, s90, -s90, c90); 
+    mat2 rotation90Matrix = mat2(c90, s90, -s90, c90); // Rotates points CCW, effectively sampling texture CW
     texCoord = rotation90Matrix * texCoord;
     
-    // Apply zoom (scale texture coordinates for overall zoom)
+    // 3. Apply zoom (scales the area of texture sampled)
     texCoord *= u_crop_tex_scale;
 
-    // Apply pan (offset texture coordinates)
+    // 4. Apply pan (offsets the sampled area)
     texCoord += u_crop_tex_offset;
     
-    texCoord += 0.5; // Move back to 0,1 range
+    texCoord += 0.5; // Move origin back to bottom-left (0,0) for texture lookup
     v_textureCoord = texCoord;
   }
 `;
 
-// Fragment Shader
+// Fragment Shader: Applies all color adjustments and effects
 const fsSource = `
-  precision mediump float;
+  precision mediump float; // Necessary for WebGL
   varying highp vec2 v_textureCoord;
   
-  uniform sampler2D u_sampler;
-  uniform vec2 u_resolution; // Canvas resolution for effects like grain
+  uniform sampler2D u_sampler;    // The image texture
+  uniform vec2 u_resolution;      // Canvas resolution for effects like grain
 
   // Basic Adjustments
   uniform float u_brightness;
@@ -71,8 +72,8 @@ const fsSource = `
   uniform float u_blacks;
   
   // Color Adjustments
-  uniform float u_hueValue; 
-  uniform float u_temperatureShift; 
+  uniform float u_hueValue;           // Normalized hue rotation (-0.5 to 0.5 for -180 to 180 deg)
+  uniform float u_temperatureShift;   // Normalized temperature shift (-0.5 to 0.5)
 
   // Tinting
   uniform vec3 u_tintShadowsColorRGB;
@@ -83,16 +84,15 @@ const fsSource = `
   uniform float u_tintHighlightsSaturationValue;
 
   // Selective Color
-  uniform int u_selectedColorTargetIndex; 
-  uniform float u_hueAdjustment;         
-  uniform float u_saturationAdjustment;  
-  uniform float u_luminanceAdjustment;   
+  uniform int u_selectedColorTargetIndex; // 0-7 for Red, Orange, ..., Magenta; -1 for none
+  uniform float u_hueAdjustment;          // For selective color hue shift (-0.5 to 0.5)
+  uniform float u_saturationAdjustment;   // For selective color saturation change (-1.0 to 1.0)
+  uniform float u_luminanceAdjustment;    // For selective color luminance (Value) change (-1.0 to 1.0)
 
   // Effects
   uniform float u_vignetteIntensity;
   uniform float u_grainIntensity;
-  uniform float u_sharpness;
-  // uniform float u_time; // Removed for static grain
+  // uniform float u_sharpness; // Sharpness uniform (implementation pending if re-added)
 
   // Helper functions for color conversion
   vec3 rgbToHsv(vec3 c) {
@@ -110,35 +110,38 @@ const fsSource = `
       return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
   }
   
+  // Random function for grain
   float random(vec2 st) {
     return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
   }
 
   // Hue ranges for selective color (0-1 normalized hue from HSV)
-  const float HUE_RED_MAX = 0.0416; 
-  const float HUE_RED_MIN = 0.9583; 
-  const float HUE_ORANGE_MIN = 0.0416; 
-  const float HUE_ORANGE_MAX = 0.1111; 
-  const float HUE_YELLOW_MIN = 0.1111; 
-  const float HUE_YELLOW_MAX = 0.1944; 
-  const float HUE_GREEN_MIN = 0.1944; 
-  const float HUE_GREEN_MAX = 0.4444; 
-  const float HUE_CYAN_MIN = 0.4444; 
-  const float HUE_CYAN_MAX = 0.5555; 
-  const float HUE_BLUE_MIN = 0.5555; 
-  const float HUE_BLUE_MAX = 0.7083; 
-  const float HUE_PURPLE_MIN = 0.7083; 
-  const float HUE_PURPLE_MAX = 0.8333; 
-  const float HUE_MAGENTA_MIN = 0.8333; 
-  const float HUE_MAGENTA_MAX = 0.9583; 
+  // Index: 0=R, 1=O, 2=Y, 3=G, 4=C, 5=B, 6=P, 7=M
+  const float HUE_RED_MAX = 0.0416; // ~15 deg / 360
+  const float HUE_RED_MIN = 0.9583; // ~345 deg / 360 (wraps around 0)
+  const float HUE_ORANGE_MIN = 0.0416; // ~15 deg
+  const float HUE_ORANGE_MAX = 0.1111; // ~40 deg
+  const float HUE_YELLOW_MIN = 0.1111; // ~40 deg
+  const float HUE_YELLOW_MAX = 0.1944; // ~70 deg
+  const float HUE_GREEN_MIN = 0.1944; // ~70 deg
+  const float HUE_GREEN_MAX = 0.4444; // ~160 deg
+  const float HUE_CYAN_MIN = 0.4444; // ~160 deg
+  const float HUE_CYAN_MAX = 0.5555; // ~200 deg
+  const float HUE_BLUE_MIN = 0.5555; // ~200 deg
+  const float HUE_BLUE_MAX = 0.7083; // ~255 deg
+  const float HUE_PURPLE_MIN = 0.7083; // ~255 deg
+  const float HUE_PURPLE_MAX = 0.8333; // ~300 deg
+  const float HUE_MAGENTA_MIN = 0.8333; // ~300 deg
+  const float HUE_MAGENTA_MAX = 0.9583; // ~345 deg
   
   // Effect constants
   const float VIGNETTE_RADIUS = 0.7;
   const float VIGNETTE_SOFTNESS = 0.6;
-  const float GRAIN_BASE_STRENGTH = 0.25;
+  const float GRAIN_BASE_STRENGTH = 0.5; // Increased from 0.25
 
 
   void main(void) {
+    // Discard pixels outside the valid texture coordinate range (handles cropping/panning)
     if (v_textureCoord.x < 0.0 || v_textureCoord.x > 1.0 || v_textureCoord.y < 0.0 || v_textureCoord.y > 1.0) {
         discard; 
         return;
@@ -146,16 +149,14 @@ const fsSource = `
     vec4 textureColor = texture2D(u_sampler, v_textureCoord);
     vec3 color = textureColor.rgb;
 
-    // 1. Basic Adjustments
+    // 1. Basic Adjustments (Brightness, Contrast, Saturation, Vibrance, Exposure)
     color *= u_brightness;
     color = (color - 0.5) * u_contrast + 0.5;
     
-    // Saturation
     float luma_sat = dot(color, vec3(0.299, 0.587, 0.114));
     color = mix(vec3(luma_sat), color, u_saturation);
   
-    // Vibrance
-    if (u_vibrance != 0.0) { 
+    if (abs(u_vibrance) > 0.001) { // Apply vibrance if not zero
         vec3 vibrance_input_color = color;
         float luma_vib = dot(vibrance_input_color, vec3(0.299, 0.587, 0.114));
         float Cmax = max(vibrance_input_color.r, max(vibrance_input_color.g, vibrance_input_color.b));
@@ -171,100 +172,95 @@ const fsSource = `
 
     color *= pow(2.0, u_exposure); 
     
+    // 2. Shadows & Highlights
     float luma_sh_hl_initial = dot(color, vec3(0.2126, 0.7152, 0.0722));
     color += u_shadows * 0.25 * (1.0 - smoothstep(0.0, 0.5, luma_sh_hl_initial)); 
     float luma_sh_hl_after_shadows = dot(color, vec3(0.2126, 0.7152, 0.0722)); 
     color += u_highlights * 0.25 * smoothstep(0.5, 1.0, luma_sh_hl_after_shadows); 
     
+    // 3. Levels (Whites & Blacks)
     float black_point_adjust = u_blacks * 0.15; 
     float white_point_adjust = 1.0 + u_whites * 0.15; 
-    white_point_adjust = max(white_point_adjust, black_point_adjust + 0.001); 
+    white_point_adjust = max(white_point_adjust, black_point_adjust + 0.001); // ensure white > black
     color = (color - black_point_adjust) / (white_point_adjust - black_point_adjust);
 
-    // 2. Color Adjustments (Hue, Temperature)
-    if (abs(u_hueValue) > 0.001) { 
+    // 4. Color Adjustments (Hue, Temperature)
+    if (abs(u_hueValue) > 0.001) { // Apply if hue value is significant
         vec3 hsv_hue = rgbToHsv(color);
         hsv_hue.x = mod(hsv_hue.x + u_hueValue, 1.0);
         color = hsvToRgb(hsv_hue);
     }
 
-    if (abs(u_temperatureShift) > 0.001) { 
-        float temp_strength = u_temperatureShift * 0.3; 
+    if (abs(u_temperatureShift) > 0.001) { // Apply if temperature shift is significant
+        float temp_strength = u_temperatureShift * 0.3; // scale down for subtler effect
         color.r += temp_strength;
         color.b -= temp_strength;
     }
 
-    // 3. Tinting
+    // 5. Tinting (Shadows & Highlights)
     float luma_tint = dot(color, vec3(0.2126, 0.7152, 0.0722)); 
-    vec3 desaturate_temp_tint_color_shadows = vec3(dot(u_tintShadowsColorRGB, vec3(0.299, 0.587, 0.114)));
-    vec3 finalShadowTintColor = mix(desaturate_temp_tint_color_shadows, u_tintShadowsColorRGB, u_tintShadowsSaturationValue);
-    float shadowMask = 1.0 - smoothstep(0.0, 0.45, luma_tint); 
-    color = mix(color, finalShadowTintColor, shadowMask * u_tintShadowsIntensityFactor);
+    
+    // Shadows Tint
+    if (u_tintShadowsIntensityFactor > 0.001) {
+        vec3 desaturate_temp_tint_color_shadows = vec3(dot(u_tintShadowsColorRGB, vec3(0.299, 0.587, 0.114)));
+        vec3 finalShadowTintColor = mix(desaturate_temp_tint_color_shadows, u_tintShadowsColorRGB, u_tintShadowsSaturationValue);
+        float shadowMask = 1.0 - smoothstep(0.0, 0.45, luma_tint); 
+        color = mix(color, finalShadowTintColor, shadowMask * u_tintShadowsIntensityFactor);
+    }
 
-    vec3 desaturate_temp_tint_color_highlights = vec3(dot(u_tintHighlightsColorRGB, vec3(0.299, 0.587, 0.114)));
-    vec3 finalHighlightTintColor = mix(desaturate_temp_tint_color_highlights, u_tintHighlightsColorRGB, u_tintHighlightsSaturationValue);
-    float highlightMask = smoothstep(0.55, 1.0, luma_tint); 
-    color = mix(color, finalHighlightTintColor, highlightMask * u_tintHighlightsIntensityFactor);
-
-    // 4. Selective Color
+    // Highlights Tint
+    if (u_tintHighlightsIntensityFactor > 0.001) {
+        vec3 desaturate_temp_tint_color_highlights = vec3(dot(u_tintHighlightsColorRGB, vec3(0.299, 0.587, 0.114)));
+        vec3 finalHighlightTintColor = mix(desaturate_temp_tint_color_highlights, u_tintHighlightsColorRGB, u_tintHighlightsSaturationValue);
+        float highlightMask = smoothstep(0.55, 1.0, luma_tint); 
+        color = mix(color, finalHighlightTintColor, highlightMask * u_tintHighlightsIntensityFactor);
+    }
+    
+    // 6. Selective Color
     if (u_selectedColorTargetIndex != -1 && (abs(u_hueAdjustment) > 0.001 || abs(u_saturationAdjustment) > 0.001 || abs(u_luminanceAdjustment) > 0.001 )) {
         vec3 hsv_selective = rgbToHsv(color);
         bool colorMatch = false;
 
-        if (u_selectedColorTargetIndex == 0) { 
+        if (u_selectedColorTargetIndex == 0) { // Reds
             if (hsv_selective.x >= HUE_RED_MIN || hsv_selective.x < HUE_RED_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 1) { 
+        } else if (u_selectedColorTargetIndex == 1) { // Oranges
             if (hsv_selective.x >= HUE_ORANGE_MIN && hsv_selective.x < HUE_ORANGE_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 2) { 
+        } else if (u_selectedColorTargetIndex == 2) { // Yellows
             if (hsv_selective.x >= HUE_YELLOW_MIN && hsv_selective.x < HUE_YELLOW_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 3) { 
+        } else if (u_selectedColorTargetIndex == 3) { // Greens
             if (hsv_selective.x >= HUE_GREEN_MIN && hsv_selective.x < HUE_GREEN_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 4) { 
+        } else if (u_selectedColorTargetIndex == 4) { // Cyans
             if (hsv_selective.x >= HUE_CYAN_MIN && hsv_selective.x < HUE_CYAN_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 5) { 
+        } else if (u_selectedColorTargetIndex == 5) { // Blues
             if (hsv_selective.x >= HUE_BLUE_MIN && hsv_selective.x < HUE_BLUE_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 6) { 
+        } else if (u_selectedColorTargetIndex == 6) { // Purples
             if (hsv_selective.x >= HUE_PURPLE_MIN && hsv_selective.x < HUE_PURPLE_MAX) colorMatch = true;
-        } else if (u_selectedColorTargetIndex == 7) { 
+        } else if (u_selectedColorTargetIndex == 7) { // Magentas
             if (hsv_selective.x >= HUE_MAGENTA_MIN && hsv_selective.x < HUE_MAGENTA_MAX) colorMatch = true;
         }
 
         if (colorMatch) {
-            hsv_selective.x = mod(hsv_selective.x + u_hueAdjustment, 1.0); 
-            hsv_selective.y = clamp(hsv_selective.y + u_saturationAdjustment, 0.0, 1.0); 
-            hsv_selective.z = clamp(hsv_selective.z + u_luminanceAdjustment, 0.0, 1.0); 
+            hsv_selective.x = mod(hsv_selective.x + u_hueAdjustment, 1.0); // u_hueAdjustment is -0.5 to 0.5
+            hsv_selective.y = clamp(hsv_selective.y + u_saturationAdjustment, 0.0, 1.0); // u_saturationAdjustment is -1.0 to 1.0
+            hsv_selective.z = clamp(hsv_selective.z + u_luminanceAdjustment, 0.0, 1.0); // u_luminanceAdjustment is -1.0 to 1.0
             color = hsvToRgb(hsv_selective);
         }
     }
 
-    // 5. Effects (Vignette, Grain, Sharpness)
+    // 7. Effects (Vignette, Grain)
     // Vignette
     float vignette_dist = distance(v_textureCoord, vec2(0.5));
     float vignetteEffectFactor = smoothstep(VIGNETTE_RADIUS, VIGNETTE_RADIUS - VIGNETTE_SOFTNESS, vignette_dist);
+    // Apply vignette only if intensity is > 0 by mixing; u_vignetteIntensity comes from JS (0 to 1)
     color.rgb *= mix(1.0, vignetteEffectFactor, u_vignetteIntensity * 1.5);
 
 
-    // Grain
-    float grain_noise_value = (random(v_textureCoord * u_resolution.x / 50.0) - 0.5) * GRAIN_BASE_STRENGTH; // u_time removed
+    // Grain (u_grainIntensity from JS: 0 to 1 for preview, potentially higher for export)
+    float grain_noise_value = (random(v_textureCoord * u_resolution.x / 50.0) - 0.5) * GRAIN_BASE_STRENGTH;
     color.rgb += grain_noise_value * u_grainIntensity;
 
-    // Sharpness
-    if (u_sharpness > 0.001) { 
-        vec2 texelSize = 1.0 / u_resolution;
-        vec3 centerPixelColor = color.rgb; 
-        vec3 sum = vec3(0.0);
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(1.0, 1.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(0.0, 1.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(-1.0, 1.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(1.0, 0.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(-1.0, 0.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(1.0, -1.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(0.0, -1.0)).rgb;
-        sum += texture2D(u_sampler, v_textureCoord - texelSize * vec2(-1.0, -1.0)).rgb;
-        vec3 blurred = sum / 8.0;
-        color.rgb = mix(centerPixelColor, centerPixelColor + (centerPixelColor - blurred) * 1.5, u_sharpness);
-    }
 
+    // Final Clamp
     gl_FragColor = vec4(clamp(color, 0.0, 1.0), textureColor.a);
   }
 `;
@@ -279,10 +275,12 @@ interface ProgramInfo {
   uniformLocations: {
     sampler: WebGLUniformLocation | null;
     resolution: WebGLUniformLocation | null;
+    // Transforms
     rotationAngle: WebGLUniformLocation | null;
     scale: WebGLUniformLocation | null;
     cropTexScale: WebGLUniformLocation | null;
     cropTexOffset: WebGLUniformLocation | null;
+    // Basic Adjustments
     brightness: WebGLUniformLocation | null;
     contrast: WebGLUniformLocation | null;
     saturation: WebGLUniformLocation | null;
@@ -292,22 +290,25 @@ interface ProgramInfo {
     shadows: WebGLUniformLocation | null;
     whites: WebGLUniformLocation | null;
     blacks: WebGLUniformLocation | null;
+    // Color Adjustments
     hueValue: WebGLUniformLocation | null;
     temperatureShift: WebGLUniformLocation | null;
+    // Tinting
     tintShadowsColorRGB: WebGLUniformLocation | null;
     tintShadowsIntensityFactor: WebGLUniformLocation | null;
     tintShadowsSaturationValue: WebGLUniformLocation | null;
     tintHighlightsColorRGB: WebGLUniformLocation | null;
     tintHighlightsIntensityFactor: WebGLUniformLocation | null;
     tintHighlightsSaturationValue: WebGLUniformLocation | null;
+    // Selective Color
     selectedColorTargetIndex: WebGLUniformLocation | null;
     hueAdjustment: WebGLUniformLocation | null;
     saturationAdjustment: WebGLUniformLocation | null;
     luminanceAdjustment: WebGLUniformLocation | null;
+    // Effects
     vignetteIntensity: WebGLUniformLocation | null;
     grainIntensity: WebGLUniformLocation | null;
-    sharpness: WebGLUniformLocation | null;
-    // u_time uniform location removed
+    // sharpness: WebGLUniformLocation | null; // Sharpness placeholder
   };
 }
 
@@ -316,23 +317,24 @@ interface Buffers {
   textureCoord: WebGLBuffer | null;
 }
 
-
 export function ImageCanvas() {
   const { 
     originalImage, 
     settings, 
-    canvasRef, 
-    noiseImageDataRef,
-    setIsPreviewing // For future use if we re-add preview scaling
+    canvasRef,
+    noiseImageDataRef, // Used to create pattern for grain
+    // setIsPreviewing, // No longer used here, preview resolution handled differently
   } = useImageEditor();
   
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programInfoRef = useRef<ProgramInfo | null>(null);
   const buffersRef = useRef<Buffers | null>(null);
   const textureRef = useRef<WebGLTexture | null>(null);
-  const isInitializedRef = useRef(false);
+  const isInitializedRef = useRef(false); // Tracks if WebGL basic setup (context, shaders, program, buffers) is done
   const [webGLError, setWebGLError] = useState<string | null>(null);
-  const initialCanvasSetupDoneRef = useRef(false); // To track if initial canvas setup (size, texture) is done
+
+  // For ensuring canvas dimensions are set before first draw with texture
+  const initialCanvasSetupDoneRef = useRef(false); 
 
 
   const checkGLError = useCallback((glContext: WebGLRenderingContext | null, operation: string): boolean => {
@@ -351,7 +353,7 @@ export function ImageCanvas() {
         default: errorMsg = 'Unknown error code: ' + error; break;
       }
       console.error('WebGL Error (' + operation + '): ' + errorMsg + ' (Code: ' + error + ')');
-      setWebGLError('WebGL Error (' + operation + '): ' + errorMsg + ' (Code: ' + error + ')');
+      // setWebGLError('WebGL Error (' + operation + '): ' + errorMsg + ' (Code: ' + error + ')');
       error = glContext.getError(); 
     }
     return errorFound;
@@ -434,11 +436,10 @@ export function ImageCanvas() {
         luminanceAdjustment: gl.getUniformLocation(shaderProgram, 'u_luminanceAdjustment'),
         vignetteIntensity: gl.getUniformLocation(shaderProgram, 'u_vignetteIntensity'),
         grainIntensity: gl.getUniformLocation(shaderProgram, 'u_grainIntensity'),
-        sharpness: gl.getUniformLocation(shaderProgram, 'u_sharpness'),
-        // u_time uniform location removed
+        // sharpness: gl.getUniformLocation(shaderProgram, 'u_sharpness'),
       },
     };
-    console.log('Shader program linked.');
+    console.log('Shader program linked. Attribs:', progInfo.attribLocations, 'Uniforms:', progInfo.uniformLocations);
     return progInfo;
   }, [loadShader, setWebGLError]);
 
@@ -446,13 +447,15 @@ export function ImageCanvas() {
     const positionBuffer = gl.createBuffer();
     if (!positionBuffer) { console.error('Failed to create position buffer'); return null; }
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    const positions = [-1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0]; 
+    // Two triangles to form a quad: (-1,1) to (1,-1)
+    const positions = [-1.0,  1.0,  1.0,  1.0, -1.0, -1.0, -1.0, -1.0,  1.0,  1.0,  1.0, -1.0];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
     const textureCoordBuffer = gl.createBuffer();
     if (!textureCoordBuffer) { console.error('Failed to create texture coordinate buffer'); return null; }
     gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
-    const textureCoordinates = [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0,]; 
+    // Texture coordinates for the quad
+    const textureCoordinates = [0.0,  1.0, 1.0,  1.0, 0.0,  0.0, 0.0,  0.0, 1.0,  1.0, 1.0,  0.0,];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
     
     gl.bindBuffer(gl.ARRAY_BUFFER, null); 
@@ -465,8 +468,8 @@ export function ImageCanvas() {
       console.warn("loadTexture: Image not ready or zero dimensions. Will retry or wait for onload.");
       return null;
     }
-
     let imageToUse: TexImageSource = image;
+
     if (image.naturalWidth > MAX_TEXTURE_DIMENSION || image.naturalHeight > MAX_TEXTURE_DIMENSION) {
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
@@ -488,14 +491,14 @@ export function ImageCanvas() {
                     width = Math.round(height * aspectRatio);
                 }
             }
-            width = Math.max(1, Math.round(width));
+            width = Math.max(1, Math.round(width)); // Ensure positive dimensions
             height = Math.max(1, Math.round(height));
 
             tempCanvas.width = width;
             tempCanvas.height = height;
             tempCtx.drawImage(image, 0, 0, width, height);
             imageToUse = tempCanvas;
-            console.log("Texture downscaled to " + width + "x" + height + " for preview.");
+            console.log("Texture source image downscaled to " + width + "x" + height + " for preview.");
         }
     }
 
@@ -506,25 +509,27 @@ export function ImageCanvas() {
       return null; 
     }
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); 
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // Flip Y axis for correct image orientation in WebGL
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
     try {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imageToUse);
-      console.log('Texture loaded successfully into WebGL.');
+      console.log('Texture loaded successfully into WebGL from:', imageToUse instanceof HTMLImageElement ? 'HTMLImageElement' : 'HTMLCanvasElement (downscaled)');
     } catch (e: any) {
       console.error('Error during texImage2D for main texture:', e.message, e);
-      setWebGLError('Error during texImage2D for main texture: ' + e.message);
+      setWebGLError('Error during texImage2D: ' + e.message);
       gl.deleteTexture(texture); return null;
     }
     if (checkGLError(gl, 'loadTexture - after texImage2D')) {
         gl.deleteTexture(texture); return null;
     }
-    gl.bindTexture(gl.TEXTURE_2D, null); 
+    gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
     return texture;
   }, [checkGLError, setWebGLError]);
+
 
   const drawScene = useCallback(() => {
     const gl = glRef.current;
@@ -532,52 +537,56 @@ export function ImageCanvas() {
     const currentBuffers = buffersRef.current;
     const canvas = canvasRef.current;
     const currentTexture = textureRef.current;
-    const currentSettings = settings; 
+    const currentSettings = settings;
 
     if (!gl || !programInfo || !currentBuffers || !canvas || !isInitializedRef.current) {
+      // console.warn('drawScene: WebGL not fully initialized or canvas not ready.');
       return;
     }
     
     if (!originalImage || !currentTexture) {
-        gl.clearColor(0.188, 0.188, 0.188, 1.0); 
+        gl.clearColor(0.188, 0.188, 0.188, 1.0); // Dark gray background
         gl.clear(gl.COLOR_BUFFER_BIT);
-        initialCanvasSetupDoneRef.current = false; // Reset this if image is removed
+        initialCanvasSetupDoneRef.current = false;
         return;
     }
-
-    // Canvas buffer dimensions are now set in the useEffect hook based on originalImage/rotation/cropZoom
-    // gl.viewport should already be set there too.
-    // Ensure it's set if not done elsewhere or if it needs to be dynamic per frame (usually not)
-    // gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight); // This should be okay if canvas size is stable
+    
+    // Determine canvas buffer dimensions (should be stable unless image/rotation/cropZoom changes)
+    // This part is now handled in the useEffect for texture loading and canvas sizing.
+    // Here, we just use the existing canvas.width/height which reflect drawingBufferWidth/Height
 
     gl.clearColor(0.188, 0.188, 0.188, 1.0); 
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear depth buffer too
 
     gl.useProgram(programInfo.program);
+    checkGLError(gl, 'drawScene - after useProgram');
 
+    // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffers.position);
     gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+    checkGLError(gl, 'drawScene - after position attribute setup');
 
     gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffers.textureCoord);
     gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
+    checkGLError(gl, 'drawScene - after texCoord attribute setup');
 
+    // Bind texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, currentTexture);
     if (programInfo.uniformLocations.sampler) gl.uniform1i(programInfo.uniformLocations.sampler, 0);
-    
+    checkGLError(gl, 'drawScene - after texture binding');
+
     const activeSettings = currentSettings.isViewingOriginal
     ? { 
         ...initialImageSettings, 
-        // Keep transforms from current settings for consistent framing
         rotation: currentSettings.rotation, 
         scaleX: currentSettings.scaleX, 
         scaleY: currentSettings.scaleY,
         cropZoom: currentSettings.cropZoom, 
         cropOffsetX: currentSettings.cropOffsetX, 
         cropOffsetY: currentSettings.cropOffsetY,
-        // tiltAngle: currentSettings.tiltAngle, // Tilt removed
         selectiveColors: JSON.parse(JSON.stringify(initialImageSettings.selectiveColors)),
         tintShadowsColor: initialImageSettings.tintShadowsColor,
         tintShadowsIntensity: initialImageSettings.tintShadowsIntensity,
@@ -588,7 +597,8 @@ export function ImageCanvas() {
       }
     : currentSettings;
 
-    // Transform uniforms
+    // Set uniforms
+    // Transforms
     let rotationInRadians = 0;
     switch (activeSettings.rotation) { 
       case 90: rotationInRadians = Math.PI / 2; break;
@@ -598,79 +608,91 @@ export function ImageCanvas() {
     if (programInfo.uniformLocations.rotationAngle) gl.uniform1f(programInfo.uniformLocations.rotationAngle, rotationInRadians);
     if (programInfo.uniformLocations.scale) gl.uniform2f(programInfo.uniformLocations.scale, activeSettings.scaleX, activeSettings.scaleY);
 
-    const totalEffectiveZoom = activeSettings.cropZoom; 
+    const totalEffectiveZoom = activeSettings.cropZoom;
     const u_crop_tex_scale_val: [number, number] = [1.0 / totalEffectiveZoom, 1.0 / totalEffectiveZoom];
-    const maxTexOffset = Math.max(0, (1.0 - (1.0 / totalEffectiveZoom)) / 2.0 );
+    let maxTexOffset = (1.0 - (1.0 / totalEffectiveZoom)) / 2.0;
+    maxTexOffset = Math.max(0, maxTexOffset); // Ensure non-negative
     let texOffsetX = activeSettings.cropOffsetX * maxTexOffset; 
-    let texOffsetY = activeSettings.cropOffsetY * maxTexOffset * -1.0; 
-
+    let texOffsetY = activeSettings.cropOffsetY * maxTexOffset * -1.0; // Invert Y for intuitive pan
     if (programInfo.uniformLocations.cropTexScale) gl.uniform2fv(programInfo.uniformLocations.cropTexScale, u_crop_tex_scale_val);
     if (programInfo.uniformLocations.cropTexOffset) gl.uniform2fv(programInfo.uniformLocations.cropTexOffset, [texOffsetX, texOffsetY]);
-
-    // Visual effect uniforms
-    if (programInfo.uniformLocations.brightness) gl.uniform1f(programInfo.uniformLocations.brightness, activeSettings.brightness);
-    if (programInfo.uniformLocations.contrast) gl.uniform1f(programInfo.uniformLocations.contrast, activeSettings.contrast);
-    if (programInfo.uniformLocations.saturation) gl.uniform1f(programInfo.uniformLocations.saturation, activeSettings.saturation);
-    if (programInfo.uniformLocations.vibrance) gl.uniform1f(programInfo.uniformLocations.vibrance, activeSettings.vibrance);
-    if (programInfo.uniformLocations.exposure) gl.uniform1f(programInfo.uniformLocations.exposure, activeSettings.exposure);
-    if (programInfo.uniformLocations.highlights) gl.uniform1f(programInfo.uniformLocations.highlights, activeSettings.highlights);
-    if (programInfo.uniformLocations.shadows) gl.uniform1f(programInfo.uniformLocations.shadows, activeSettings.shadows);
-    if (programInfo.uniformLocations.whites) gl.uniform1f(programInfo.uniformLocations.whites, activeSettings.whites);
-    if (programInfo.uniformLocations.blacks) gl.uniform1f(programInfo.uniformLocations.blacks, activeSettings.blacks);
     
-    if (programInfo.uniformLocations.hueValue) gl.uniform1f(programInfo.uniformLocations.hueValue, (activeSettings.hueRotate / 360.0));
-    if (programInfo.uniformLocations.temperatureShift) gl.uniform1f(programInfo.uniformLocations.temperatureShift, (activeSettings.colorTemperature / 200.0));
+    // Basic Adjustments
+    if (programInfo.uniformLocations.brightness) gl.uniform1f(programInfo.uniformLocations.brightness, activeSettings.brightness ?? 1.0);
+    if (programInfo.uniformLocations.contrast) gl.uniform1f(programInfo.uniformLocations.contrast, activeSettings.contrast ?? 1.0);
+    if (programInfo.uniformLocations.saturation) gl.uniform1f(programInfo.uniformLocations.saturation, activeSettings.saturation ?? 1.0);
+    if (programInfo.uniformLocations.vibrance) gl.uniform1f(programInfo.uniformLocations.vibrance, activeSettings.vibrance ?? 0.0);
+    if (programInfo.uniformLocations.exposure) gl.uniform1f(programInfo.uniformLocations.exposure, activeSettings.exposure ?? 0.0);
+    if (programInfo.uniformLocations.highlights) gl.uniform1f(programInfo.uniformLocations.highlights, activeSettings.highlights ?? 0.0);
+    if (programInfo.uniformLocations.shadows) gl.uniform1f(programInfo.uniformLocations.shadows, activeSettings.shadows ?? 0.0);
+    if (programInfo.uniformLocations.whites) gl.uniform1f(programInfo.uniformLocations.whites, activeSettings.whites ?? 0.0);
+    if (programInfo.uniformLocations.blacks) gl.uniform1f(programInfo.uniformLocations.blacks, activeSettings.blacks ?? 0.0);
+    
+    // Color Adjustments
+    if (programInfo.uniformLocations.hueValue) gl.uniform1f(programInfo.uniformLocations.hueValue, (activeSettings.hueRotate ?? 0) / 360.0);
+    if (programInfo.uniformLocations.temperatureShift) gl.uniform1f(programInfo.uniformLocations.temperatureShift, (activeSettings.colorTemperature ?? 0) / 200.0);
 
+    // Tinting
     const shadowRgb = hexToRgbNormalizedArray(activeSettings.tintShadowsColor);
     if (programInfo.uniformLocations.tintShadowsColorRGB && shadowRgb) gl.uniform3fv(programInfo.uniformLocations.tintShadowsColorRGB, shadowRgb);
-    else if (programInfo.uniformLocations.tintShadowsColorRGB) gl.uniform3fv(programInfo.uniformLocations.tintShadowsColorRGB, [0.5, 0.5, 0.5]); 
+    else if (programInfo.uniformLocations.tintShadowsColorRGB) gl.uniform3fv(programInfo.uniformLocations.tintShadowsColorRGB, [0.5, 0.5, 0.5]); // Default gray
     if (programInfo.uniformLocations.tintShadowsIntensityFactor) gl.uniform1f(programInfo.uniformLocations.tintShadowsIntensityFactor, activeSettings.tintShadowsIntensity);
     if (programInfo.uniformLocations.tintShadowsSaturationValue) gl.uniform1f(programInfo.uniformLocations.tintShadowsSaturationValue, activeSettings.tintShadowsSaturation);
 
     const highlightRgb = hexToRgbNormalizedArray(activeSettings.tintHighlightsColor);
     if (programInfo.uniformLocations.tintHighlightsColorRGB && highlightRgb) gl.uniform3fv(programInfo.uniformLocations.tintHighlightsColorRGB, highlightRgb);
-    else if (programInfo.uniformLocations.tintHighlightsColorRGB) gl.uniform3fv(programInfo.uniformLocations.tintHighlightsColorRGB, [0.5, 0.5, 0.5]);
+    else if (programInfo.uniformLocations.tintHighlightsColorRGB) gl.uniform3fv(programInfo.uniformLocations.tintHighlightsColorRGB, [0.5, 0.5, 0.5]); // Default gray
     if (programInfo.uniformLocations.tintHighlightsIntensityFactor) gl.uniform1f(programInfo.uniformLocations.tintHighlightsIntensityFactor, activeSettings.tintHighlightsIntensity);
     if (programInfo.uniformLocations.tintHighlightsSaturationValue) gl.uniform1f(programInfo.uniformLocations.tintHighlightsSaturationValue, activeSettings.tintHighlightsSaturation);
     
+    // Selective Color
     const SELECTIVE_COLOR_TARGETS_ORDER = ['reds', 'oranges', 'yellows', 'greens', 'cyans', 'blues', 'purples', 'magentas'];
     const targetIndex = SELECTIVE_COLOR_TARGETS_ORDER.indexOf(activeSettings.activeSelectiveColorTarget);
     if (programInfo.uniformLocations.selectedColorTargetIndex != null) { 
       gl.uniform1i(programInfo.uniformLocations.selectedColorTargetIndex, targetIndex !== -1 ? targetIndex : -1); 
     }
     const currentSelective = activeSettings.selectiveColors[activeSettings.activeSelectiveColorTarget] || { hue: 0, saturation: 0, luminance: 0 };
-    if (programInfo.uniformLocations.hueAdjustment) gl.uniform1f(programInfo.uniformLocations.hueAdjustment, currentSelective.hue); 
+    if (programInfo.uniformLocations.hueAdjustment) gl.uniform1f(programInfo.uniformLocations.hueAdjustment, (currentSelective.hue / 2.0) ); // Normalize -0.1 to 0.1 to -0.05 to 0.05 (shader might expect -0.5 to 0.5 for full 180deg)
     if (programInfo.uniformLocations.saturationAdjustment) gl.uniform1f(programInfo.uniformLocations.saturationAdjustment, currentSelective.saturation); 
     if (programInfo.uniformLocations.luminanceAdjustment) gl.uniform1f(programInfo.uniformLocations.luminanceAdjustment, currentSelective.luminance); 
     
+    // Effects
     if (programInfo.uniformLocations.vignetteIntensity) gl.uniform1f(programInfo.uniformLocations.vignetteIntensity, activeSettings.vignetteIntensity);
-    if (programInfo.uniformLocations.grainIntensity) gl.uniform1f(programInfo.uniformLocations.grainIntensity, activeSettings.grainIntensity * 0.2); // Preview grain with 20% intensity
-    if (programInfo.uniformLocations.sharpness) gl.uniform1f(programInfo.uniformLocations.sharpness, activeSettings.sharpness);
+    if (programInfo.uniformLocations.grainIntensity) gl.uniform1f(programInfo.uniformLocations.grainIntensity, activeSettings.grainIntensity * 0.2); // Preview grain at 20% of slider
+    // if (programInfo.uniformLocations.sharpness) gl.uniform1f(programInfo.uniformLocations.sharpness, activeSettings.sharpness);
+    
+    // Resolution (already set for grain, might be useful for other effects)
     if (programInfo.uniformLocations.resolution) gl.uniform2f(programInfo.uniformLocations.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    checkGLError(gl, 'drawScene - after setting all uniforms');
         
-    gl.drawArrays(gl.TRIANGLES, 0, 6); 
+    gl.drawArrays(gl.TRIANGLES, 0, 6); // Draw 2 triangles (6 vertices)
+    checkGLError(gl, 'drawScene - after drawArrays');
     initialCanvasSetupDoneRef.current = true;
   }, [originalImage, settings, canvasRef, checkGLError]);
 
 
-  // One-time WebGL setup: context, shaders, program, buffers
+  // Effect for one-time WebGL setup: context, shaders, program, buffers
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || isInitializedRef.current) {
+    if (!canvas || isInitializedRef.current) { // Only run once if canvas exists
       return;
     }
-
-    const localGL = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false }) || canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true, antialias: false });
+    console.log("ImageCanvas: Attempting WebGL context initialization.");
+    const localGL = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false }) || 
+                    canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true, antialias: false });
+    
     if (!localGL) {
       console.error('ImageCanvas: Unable to initialize WebGL context.');
-      setWebGLError('ImageCanvas: Unable to initialize WebGL context.');
+      setWebGLError('Unable to initialize WebGL. Your browser or device may not support it.');
       return;
     }
     glRef.current = localGL;
+    console.log("ImageCanvas: WebGL context successfully obtained.");
 
     const pInfo = initShaderProgram(localGL);
     if (!pInfo) {
       console.error("ImageCanvas: Shader program initialization failed.");
+      setWebGLError('Failed to initialize shader program.');
       glRef.current = null; 
       return;
     }
@@ -679,6 +701,7 @@ export function ImageCanvas() {
     const bInfo = initBuffers(localGL);
     if (!bInfo) {
       console.error("ImageCanvas: Buffer initialization failed.");
+      setWebGLError('Failed to initialize buffers.');
       glRef.current = null; 
       programInfoRef.current = null;
       return;
@@ -686,139 +709,145 @@ export function ImageCanvas() {
     buffersRef.current = bInfo;
 
     isInitializedRef.current = true;
-    console.log("ImageCanvas: WebGL initialized.");
+    console.log("ImageCanvas: WebGL fully initialized (context, shaders, program, buffers).");
     requestAnimationFrame(drawScene); // Initial draw/clear after setup
     
-  }, [canvasRef, initShaderProgram, initBuffers, drawScene]); 
+  }, [canvasRef, initShaderProgram, initBuffers, drawScene]); // Dependencies for one-time setup
 
 
-  // Load texture, set canvas size, and draw when originalImage or relevant settings change
+  // Effect for loading/updating the texture and setting canvas dimensions
   useEffect(() => {
     const gl = glRef.current;
     const canvas = canvasRef.current;
 
-    if (!gl || !isInitializedRef.current || !canvas) {
+    if (!gl || !isInitializedRef.current || !canvas ) { // Ensure GL is initialized and canvas exists
+      // console.warn("TextureLoadEffect: GL, canvas, or init flag not ready.");
       return;
     }
 
     if (originalImage) {
       const imageElement = originalImage;
       
-      const setupAndDraw = () => {
+      const setupTextureAndDraw = () => {
         if (textureRef.current) {
           gl.deleteTexture(textureRef.current);
           textureRef.current = null;
+          console.log("TextureLoadEffect: Old texture deleted.");
         }
         const newTexture = loadTexture(gl, imageElement);
         if (newTexture) {
           textureRef.current = newTexture;
-          console.log("Texture loaded/updated. Requesting drawScene.");
+          console.log("TextureLoadEffect: New texture loaded/updated. Ready for drawing.");
         } else {
-          console.error("LoadTexture Effect: Failed to load new texture from image.");
+          console.error("TextureLoadEffect: Failed to load new texture from image.");
           setWebGLError("Failed to load texture from image.");
           textureRef.current = null; 
         }
-
-        // Determine canvas dimensions based on image, limits, rotation, and cropZoom
+        
+        // Determine canvas buffer dimensions based on image, limits, rotation, and cropZoom
         let imgNatWidth = imageElement.naturalWidth;
         let imgNatHeight = imageElement.naturalHeight;
 
-        let sWidth = imgNatWidth / (settings.cropZoom || 1); // Use settings here
-        let sHeight = imgNatHeight / (settings.cropZoom || 1);
+        // Effective content dimensions after manual cropZoom
+        let sWidth = imgNatWidth / settings.cropZoom;
+        let sHeight = imgNatHeight / settings.cropZoom;
+        
         let contentAspectRatio = sWidth / sHeight;
 
         let finalCanvasWidth: number;
         let finalCanvasHeight: number;
 
-        if (contentAspectRatio > 1) { 
+        if (contentAspectRatio > 1) { // Landscape or square
             finalCanvasWidth = Math.min(sWidth, (contentAspectRatio > 1.6 ? MAX_WIDTH_WIDE_RATIO : MAX_WIDTH_STANDARD_RATIO));
-            finalCanvasHeight = Math.round(finalCanvasWidth / contentAspectRatio);
-        } else { 
+            finalCanvasHeight = finalCanvasWidth / contentAspectRatio;
+        } else { // Portrait
             finalCanvasHeight = Math.min(sHeight, MAX_PHYSICAL_HEIGHT_CAP);
-            finalCanvasWidth = Math.round(finalCanvasHeight * contentAspectRatio);
-            if (finalCanvasWidth > MAX_WIDTH_STANDARD_RATIO) {
+            finalCanvasWidth = finalCanvasHeight * contentAspectRatio;
+            if (finalCanvasWidth > MAX_WIDTH_STANDARD_RATIO) { // Cap width if portrait is too wide after height cap
                 finalCanvasWidth = MAX_WIDTH_STANDARD_RATIO;
-                finalCanvasHeight = Math.round(finalCanvasWidth / contentAspectRatio);
+                finalCanvasHeight = finalCanvasWidth / contentAspectRatio;
             }
         }
         
         finalCanvasWidth = Math.max(1, Math.round(finalCanvasWidth));
         finalCanvasHeight = Math.max(1, Math.round(finalCanvasHeight));
 
-        if (settings.rotation === 90 || settings.rotation === 270) { // Use settings here
+        // Adjust canvas buffer dimensions for 90/270 degree rotations
+        if (settings.rotation === 90 || settings.rotation === 270) {
             [finalCanvasWidth, finalCanvasHeight] = [finalCanvasHeight, finalCanvasWidth];
         }
 
         if (canvas.width !== finalCanvasWidth || canvas.height !== finalCanvasHeight ) {
-            canvas.width = finalCanvasWidth > 0 ? finalCanvasWidth : 1;
-            canvas.height = finalCanvasHeight > 0 ? finalCanvasHeight : 1;
-            console.log("Canvas resized to: " + canvas.width + "x" + canvas.height);
+            canvas.width = finalCanvasWidth;
+            canvas.height = finalCanvasHeight;
+            console.log("TextureLoadEffect: Canvas resized to: " + canvas.width + "x" + canvas.height);
         }
         gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        checkGLError(gl, 'TextureLoadEffect - after viewport set');
+        
         requestAnimationFrame(drawScene); 
       };
 
       if (imageElement.complete && imageElement.naturalWidth > 0) {
-        setupAndDraw();
+        console.log("TextureLoadEffect: Image is complete. Setting up texture.");
+        setupTextureAndDraw();
       } else if (imageElement.src) { 
-        imageElement.onload = () => {
-            setupAndDraw();
+        console.log("TextureLoadEffect: Image src exists, attaching onload/onerror.");
+        const handleLoad = () => {
+            console.log("TextureLoadEffect: Image onload triggered.");
+            setupTextureAndDraw();
+            imageElement.removeEventListener('load', handleLoad);
+            imageElement.removeEventListener('error', handleError);
         };
-        imageElement.onerror = () => {
-          console.error("LoadTexture Effect: Image onerror event triggered.");
+        const handleError = () => {
+          console.error("TextureLoadEffect: Image onerror event triggered.");
           setWebGLError("Image failed to load (onerror).");
           if (textureRef.current) { gl.deleteTexture(textureRef.current); textureRef.current = null; }
-          requestAnimationFrame(drawScene); 
+          requestAnimationFrame(drawScene); // Attempt to clear canvas
+          imageElement.removeEventListener('load', handleLoad);
+          imageElement.removeEventListener('error', handleError);
         };
+        imageElement.addEventListener('load', handleLoad);
+        imageElement.addEventListener('error', handleError);
       } else {
+         console.warn("TextureLoadEffect: No image src, cleaning up texture and drawing (clear).");
          if (textureRef.current) { gl.deleteTexture(textureRef.current); textureRef.current = null; }
          requestAnimationFrame(drawScene); 
       }
     } else { 
+        console.log("TextureLoadEffect: No originalImage, cleaning up texture and drawing (clear).");
         if (textureRef.current) {
             gl.deleteTexture(textureRef.current);
             textureRef.current = null;
         }
-        initialCanvasSetupDoneRef.current = false; // Reset if image is removed
+        initialCanvasSetupDoneRef.current = false;
         requestAnimationFrame(drawScene); 
     }
-  // Key dependencies for setting up canvas size and texture
-  }, [originalImage, isInitializedRef, settings.rotation, settings.cropZoom, loadTexture, drawScene, glRef, canvasRef, settings]); 
+  }, [originalImage, isInitializedRef, settings.rotation, settings.cropZoom, loadTexture, drawScene, glRef, canvasRef, checkGLError]); 
 
-  // Effect for re-drawing when other settings (uniforms) change
+
+  // Effect for re-drawing when any visual settings (uniforms) change
   useEffect(() => {
-    if (!isInitializedRef.current) {
+    if (!isInitializedRef.current || !textureRef.current ) { // Only draw if WebGL is ready and texture is loaded
+      // console.warn("DrawSettingsEffect: Not ready to draw (init or texture missing).");
       return;
     }
-    if (!originalImage && !textureRef.current && !initialCanvasSetupDoneRef.current) { 
-      return;
-    }
+    // console.log("DrawSettingsEffect: Settings changed, requesting drawScene.");
     requestAnimationFrame(drawScene);
-  // This useEffect should react to changes in settings that are uniforms
-  // Exclude rotation and cropZoom as they are handled by the texture/canvas setup useEffect
-  }, [settings.brightness, settings.contrast, settings.saturation, settings.vibrance, 
-      settings.exposure, settings.highlights, settings.shadows, settings.whites, settings.blacks,
-      settings.hueRotate, settings.colorTemperature, 
-      settings.tintShadowsColor, settings.tintShadowsIntensity, settings.tintShadowsSaturation,
-      settings.tintHighlightsColor, settings.tintHighlightsIntensity, settings.tintHighlightsSaturation,
-      settings.selectiveColors, settings.activeSelectiveColorTarget,
-      settings.vignetteIntensity, settings.grainIntensity, settings.sharpness,
-      settings.scaleX, settings.scaleY, settings.cropOffsetX, settings.cropOffsetY, // these are transforms
-      isInitializedRef, originalImage, textureRef, drawScene, initialCanvasSetupDoneRef
-    ]);
+  }, [settings, isInitializedRef, textureRef, drawScene]); // Removed settings.isViewingOriginal if always using activeSettings logic
 
 
-  // Effect for noise ImageData generation
+  // Effect for noise ImageData generation (runs once)
   useEffect(() => {
     if (!noiseImageDataRef.current) { 
       try {
         const tempNoiseCanvas = document.createElement('canvas');
-        tempNoiseCanvas.width = NOISE_CANVAS_SIZE;
-        tempNoiseCanvas.height = NOISE_CANVAS_SIZE;
-        const noiseCtx = tempNoiseCanvas.getContext('2d');
+        tempNoiseCanvas.width = 250; // NOISE_CANVAS_SIZE
+        tempNoiseCanvas.height = 250; // NOISE_CANVAS_SIZE
+        const noiseCtx = tempNoiseCanvas.getContext('2d', { willReadFrequently: true });
 
         if (noiseCtx) {
-          const buffer = noiseCtx.createImageData(NOISE_CANVAS_SIZE, NOISE_CANVAS_SIZE);
+          const buffer = noiseCtx.createImageData(250, 250);
           const data = buffer.data;
           for (let i = 0; i < data.length; i += 4) {
             const rand = Math.floor(Math.random() * 256); 
@@ -828,10 +857,10 @@ export function ImageCanvas() {
             data[i + 3] = 255;  
           }
           noiseImageDataRef.current = buffer;
-          console.log("SUCCESS: Noise ImageData (" + NOISE_CANVAS_SIZE + "x" + NOISE_CANVAS_SIZE + ") created and stored in context ref.");
+          console.log("SUCCESS: Noise ImageData (250x250) created and stored in context ref.");
         } else {
            console.error("FAILURE: Could not get 2D context for noise ImageData generation (tempNoiseCanvas fallback).");
-           setWebGLError("FAILURE: Could not get 2D context for noise ImageData generation (tempNoiseCanvas fallback).");
+           setWebGLError("FAILURE: Could not get 2D context for noise ImageData generation.");
         }
       } catch (error: any) {
         console.error("Error creating noise ImageData:", error.message, error);
@@ -841,7 +870,7 @@ export function ImageCanvas() {
   }, [noiseImageDataRef]);
 
 
-  // Cleanup WebGL resources
+  // Cleanup WebGL resources on component unmount
   useEffect(() => {
     const localGl = glRef.current; 
     const localProgramInfo = programInfoRef.current;
@@ -849,30 +878,38 @@ export function ImageCanvas() {
     const localTexture = textureRef.current;
 
     return () => {
+      console.log("ImageCanvas: Cleaning up WebGL resources.");
       if (localGl) {
         if (localTexture) {
           localGl.deleteTexture(localTexture);
+          console.log("ImageCanvas: Deleted main texture.");
         }
         if (localProgramInfo && localProgramInfo.program) {
             const attachedShaders = localGl.getAttachedShaders(localProgramInfo.program);
             if (attachedShaders) {
                 attachedShaders.forEach(shader => { 
-                    if (shader) { localGl.detachShader(localProgramInfo.program, shader); localGl.deleteShader(shader); }
+                    if (shader) { 
+                        localGl.detachShader(localProgramInfo.program, shader); 
+                        localGl.deleteShader(shader); 
+                    }
                 });
+                console.log("ImageCanvas: Detached and deleted shaders.");
             }
             localGl.deleteProgram(localProgramInfo.program);
+            console.log("ImageCanvas: Deleted shader program.");
         }
         if (localBuffers) {
-          if(localBuffers.position) localGl.deleteBuffer(localBuffers.position);
-          if(localBuffers.textureCoord) localGl.deleteBuffer(localBuffers.textureCoord);
+          if(localBuffers.position) { localGl.deleteBuffer(localBuffers.position); console.log("ImageCanvas: Deleted position buffer."); }
+          if(localBuffers.textureCoord) { localGl.deleteBuffer(localBuffers.textureCoord); console.log("ImageCanvas: Deleted texCoord buffer.");}
         }
-        try { // Attempt to lose context, might not be available or throw
+        try { 
             const loseContextExt = localGl.getExtension('WEBGL_lose_context');
             if (loseContextExt) {
                 loseContextExt.loseContext();
+                console.log("ImageCanvas: WebGL context lost.");
             }
         } catch (e) {
-            console.warn("Could not lose WebGL context on cleanup:", e);
+            console.warn("ImageCanvas: Could not lose WebGL context on cleanup:", e);
         }
       }
       glRef.current = null;
@@ -881,8 +918,9 @@ export function ImageCanvas() {
       textureRef.current = null;
       isInitializedRef.current = false;
       initialCanvasSetupDoneRef.current = false;
+      console.log("ImageCanvas: WebGL resources nulled.");
     };
-  }, []);
+  }, []); // Empty dependency array, so it runs only on unmount
 
 
   if (webGLError) {
@@ -891,12 +929,12 @@ export function ImageCanvas() {
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--destructive-foreground))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-alert-triangle mb-4"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
         <p className="text-destructive-foreground font-semibold mb-2">WebGL Error</p>
         <p className="text-destructive-foreground/80 text-sm text-center mb-4">
-          Ocorreu um erro ao inicializar ou renderizar com WebGL.
-          Isso pode acontecer se seu navegador não suportar WebGL ou se houver um problema com os drivers gráficos.
-          Tente atualizar seu navegador ou drivers.
+          An error occurred while initializing or rendering with WebGL.
+          This might happen if your browser doesn't support WebGL or if there's an issue with graphics drivers.
+          Try updating your browser or drivers.
         </p>
         <details className="bg-background/50 p-2 rounded-md text-xs w-full max-w-md">
-          <summary className="cursor-pointer text-muted-foreground">Detalhes do Erro</summary>
+          <summary className="cursor-pointer text-muted-foreground">Error Details</summary>
           <pre className="whitespace-pre-wrap break-all mt-2 p-2 bg-muted rounded text-xs">{webGLError}</pre>
         </details>
       </Card>
@@ -914,8 +952,10 @@ export function ImageCanvas() {
   return (
     <canvas
       ref={canvasRef}
-      className="max-w-full max-h-full rounded-md shadow-lg"
-      // No dynamic style for image-rendering to avoid jiggle
+      className="max-w-full max-h-full rounded-md shadow-lg" // Removed object-contain
+      style={{ imageRendering: 'auto' }} // Keep 'auto' for now
     />
   );
 }
+
+    
