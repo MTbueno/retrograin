@@ -21,11 +21,16 @@ const fsSource = `
   precision mediump float;
   varying highp vec2 v_textureCoord;
   uniform sampler2D u_sampler;
-  uniform float u_brightness; 
+  uniform float u_brightness;
+  uniform float u_contrast; // New uniform for contrast
 
   void main(void) {
     vec4 textureColor = texture2D(u_sampler, v_textureCoord);
-    gl_FragColor = vec4(textureColor.rgb * u_brightness, textureColor.a);
+    vec3 brightenedColor = textureColor.rgb * u_brightness;
+    // Apply contrast: (color - 0.5) * contrast + 0.5
+    // Ensure result is clamped between 0.0 and 1.0
+    vec3 contrastedColor = clamp((brightenedColor - 0.5) * u_contrast + 0.5, 0.0, 1.0);
+    gl_FragColor = vec4(contrastedColor, textureColor.a);
   }
 `;
 
@@ -38,6 +43,7 @@ interface ProgramInfo {
   uniformLocations: {
     sampler: WebGLUniformLocation | null;
     brightness: WebGLUniformLocation | null;
+    contrast: WebGLUniformLocation | null; // New
   };
 }
 
@@ -131,6 +137,7 @@ export function ImageCanvas() {
       uniformLocations: {
         sampler: gl.getUniformLocation(shaderProgram, 'u_sampler'),
         brightness: gl.getUniformLocation(shaderProgram, 'u_brightness'),
+        contrast: gl.getUniformLocation(shaderProgram, 'u_contrast'), // New
       },
     };
 
@@ -140,8 +147,10 @@ export function ImageCanvas() {
     else console.log("Attrib a_texCoord found at location:", programInfo.attribLocations.textureCoord);
     if (programInfo.uniformLocations.sampler === null) console.error("Uniform u_sampler not found in shader program.");
     else console.log("Uniform u_sampler found at location:", programInfo.uniformLocations.sampler);
-    if (programInfo.uniformLocations.brightness === null) console.warn("Uniform u_brightness not found in shader program (this might be ok if not used yet).");
+    if (programInfo.uniformLocations.brightness === null) console.warn("Uniform u_brightness not found.");
     else console.log("Uniform u_brightness found at location:", programInfo.uniformLocations.brightness);
+    if (programInfo.uniformLocations.contrast === null) console.warn("Uniform u_contrast not found."); // New
+    else console.log("Uniform u_contrast found at location:", programInfo.uniformLocations.contrast); // New
     
     return programInfo;
   }, [loadShader]);
@@ -162,7 +171,7 @@ export function ImageCanvas() {
       return null;
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
-    const textureCoordinates = [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+    const textureCoordinates = [0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0]; // Flipped Y
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
     
     console.log("Buffers initialized.");
@@ -203,7 +212,7 @@ export function ImageCanvas() {
     }
     
     gl.bindTexture(gl.TEXTURE_2D, null); 
-    console.log("Texture loaded successfully into WebGL texture object.");
+    console.log("Texture loaded successfully into WebGL texture object:", texture);
     return texture;
   }, [checkGLError]);
 
@@ -215,13 +224,13 @@ export function ImageCanvas() {
     const currentTexture = textureRef.current;
 
     if (!gl || !programInfo || !currentBuffers || !canvas) {
-      console.warn("drawScene: Missing WebGL essentials (gl, programInfo, buffers, or canvas). Skipping draw.");
+      // console.warn("drawScene: Missing WebGL essentials (gl, programInfo, buffers, or canvas). Skipping draw.");
       return;
     }
     if (checkGLError(gl, "drawScene - start")) return;
 
-    let canvasPhysicalWidth = canvas.clientWidth;
-    let canvasPhysicalHeight = canvas.clientHeight;
+    let canvasPhysicalWidth = canvas.clientWidth; // Fallback if no image
+    let canvasPhysicalHeight = canvas.clientHeight; // Fallback if no image
 
     if (originalImage) {
         const imageContentWidth = originalImage.naturalWidth / settings.cropZoom;
@@ -274,10 +283,10 @@ export function ImageCanvas() {
     if (checkGLError(gl, "drawScene - after clear")) return;
 
     if (!originalImage || !currentTexture) {
-        console.warn("drawScene: No original image or texture to draw. Canvas cleared.");
+        // console.warn("drawScene: No original image or texture to draw. Canvas cleared.");
         return;
     }
-     console.log("drawScene: Drawing with texture:", currentTexture);
+    // console.log("drawScene: Drawing with texture:", currentTexture);
 
     gl.useProgram(programInfo.program);
     if (checkGLError(gl, "drawScene - after useProgram")) return;
@@ -306,11 +315,18 @@ export function ImageCanvas() {
     } else {
         console.warn("drawScene: brightness uniform location is null.");
     }
+
+    if (programInfo.uniformLocations.contrast !== null) { // New
+      gl.uniform1f(programInfo.uniformLocations.contrast, settings.contrast);
+      if (checkGLError(gl, "drawScene - after uniform1f for contrast")) return;
+    } else {
+        console.warn("drawScene: contrast uniform location is null.");
+    }
     
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); 
     if (checkGLError(gl, "drawScene - after drawArrays")) return;
 
-  }, [originalImage, canvasRef, settings, checkGLError]);
+  }, [originalImage, canvasRef, settings, checkGLError]); // Added settings to dependency array
 
 
   useEffect(() => {
@@ -360,40 +376,40 @@ export function ImageCanvas() {
     const gl = glRef.current;
     
     if (!gl || !isInitializedRef.current) {
-      console.log("Texture Effect: GL or initialization not ready. Skipping texture update.");
+      // console.log("Texture Effect: GL or initialization not ready. Skipping texture update.");
       return;
     }
 
     if (originalImage) {
-        const imageElement = originalImage; // Already an HTMLImageElement
+        const imageElement = originalImage; 
 
         const processImageAndLoadTexture = () => {
             if (textureRef.current) {
                 gl.deleteTexture(textureRef.current);
                 checkGLError(gl, "delete old texture");
-                textureRef.current = null; // Explicitly nullify
+                textureRef.current = null; 
             }
-            console.log("Texture Effect: Attempting to load new texture from originalImage:", imageElement.src.substring(0,60)+"...");
+            // console.log("Texture Effect: Attempting to load new texture from originalImage:", imageElement.src.substring(0,60)+"...");
             const newTexture = loadTexture(gl, imageElement);
             if (newTexture) {
                 textureRef.current = newTexture;
-                console.log("Texture Effect: New texture loaded, requesting drawScene.");
+                // console.log("Texture Effect: New texture loaded, requesting drawScene.");
                 if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
                 animationFrameIdRef.current = requestAnimationFrame(drawScene);
             } else {
                 console.error("Texture Effect: Failed to load new texture from originalImage. Texture will be null.");
                 textureRef.current = null;
                  if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-                animationFrameIdRef.current = requestAnimationFrame(drawScene); // Draw to clear if texture failed
+                animationFrameIdRef.current = requestAnimationFrame(drawScene); 
             }
         };
 
-        if (imageElement.complete) { // Image is already loaded
+        if (imageElement.complete) { 
             processImageAndLoadTexture();
         } else {
-            console.log("Texture Effect: OriginalImage is not complete, adding onload listener.");
+            // console.log("Texture Effect: OriginalImage is not complete, adding onload listener.");
             const handleLoad = () => {
-                console.log("Texture Effect: OriginalImage onload event triggered.");
+                // console.log("Texture Effect: OriginalImage onload event triggered.");
                 processImageAndLoadTexture();
                 imageElement.removeEventListener('load', handleLoad);
                 imageElement.removeEventListener('error', handleError);
@@ -402,7 +418,6 @@ export function ImageCanvas() {
                 console.error("Texture Effect: Error loading originalImage for WebGL texture.");
                 imageElement.removeEventListener('load', handleLoad);
                 imageElement.removeEventListener('error', handleError);
-                // Potentially clear textureRef and draw if needed
                 if (textureRef.current) {
                     gl.deleteTexture(textureRef.current);
                     textureRef.current = null;
@@ -414,28 +429,30 @@ export function ImageCanvas() {
             imageElement.addEventListener('error', handleError);
         }
 
-    } else { // No originalImage
+    } else { 
       if (textureRef.current) {
         gl.deleteTexture(textureRef.current);
-        console.log("Texture Effect: Deleted old texture (originalImage is null).");
+        // console.log("Texture Effect: Deleted old texture (originalImage is null).");
         checkGLError(gl, "delete old texture in else branch");
         textureRef.current = null;
       }
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-      animationFrameIdRef.current = requestAnimationFrame(drawScene); // Draw to clear
+      animationFrameIdRef.current = requestAnimationFrame(drawScene); 
     }
-  }, [originalImage, loadTexture, drawScene, checkGLError]); 
+  }, [originalImage, loadTexture, drawScene, checkGLError, isInitializedRef]); // Added isInitializedRef
 
 
   useEffect(() => {
+    // This effect specifically handles re-drawing when settings change
     if (isInitializedRef.current && glRef.current && originalImage && textureRef.current) {
         if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
         animationFrameIdRef.current = requestAnimationFrame(drawScene);
     }
-  }, [settings, drawScene, originalImage]);
+  }, [settings, drawScene, originalImage]); // Keep settings here to trigger re-draws on adjustment
 
 
   useEffect(() => {
+    // Cleanup
     const gl = glRef.current; 
     const pInfo = programInfoRef.current;
     const bInfo = buffersRef.current;
@@ -461,6 +478,7 @@ export function ImageCanvas() {
           gl.deleteBuffer(bInfo.position);
           gl.deleteBuffer(bInfo.textureCoord);
         }
+        // Attempt to gracefully lose context, though not all browsers might support this perfectly
         const loseContextExt = gl.getExtension('WEBGL_lose_context');
         if (loseContextExt) {
             try { loseContextExt.loseContext(); } catch (e) { /*ignore*/ }
@@ -471,6 +489,7 @@ export function ImageCanvas() {
       buffersRef.current = null;
       textureRef.current = null;
       isInitializedRef.current = false;
+      console.log("WebGL resources cleaned up.");
     };
   }, []);
 
@@ -487,8 +506,7 @@ export function ImageCanvas() {
     <canvas
       ref={canvasRef}
       className="max-w-full max-h-full rounded-md shadow-lg" 
-      style={{ imageRendering: 'pixelated' }} 
+      // style={{ imageRendering: 'pixelated' }} // Might not be needed/effective for WebGL
     />
   );
 }
-
