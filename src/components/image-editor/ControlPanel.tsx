@@ -13,12 +13,12 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-import { FiltersSection } from './FiltersSection';
+import { FiltersSection } from './FiltersSection'; // Keep for future, or if you re-add CSS presets
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.11_color_temp_hue_tint"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.12_effects"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -47,8 +47,8 @@ export function ControlPanel() {
             <AdjustmentsSection />
             <SidebarSeparator />
             <TransformsSection />
-            <SidebarSeparator />
-            <FiltersSection />
+            {/* <SidebarSeparator />
+            <FiltersSection /> // Presets are not WebGL yet */}
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
@@ -60,3 +60,6 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
+
+
+    
