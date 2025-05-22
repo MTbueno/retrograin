@@ -224,7 +224,7 @@ export function AdjustmentsSection() {
               handleTintColorChange(tonalRange, newColor);
             }}
             className="h-4" 
-            onPointerUp={() => { // Renamed from onPointerCommit for spectrum slider
+            onPointerUp={() => { 
               if (originalImage) setIsPreviewing(false);
             }}
           />

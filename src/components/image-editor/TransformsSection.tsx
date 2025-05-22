@@ -87,7 +87,8 @@ export function TransformsSection() {
       ? control.value 
       : (control.id === 'cropZoom' ? 1 : 0);
     
-    const displayText = currentValue.toFixed(2);
+    const displayText = (currentValue ?? 0).toFixed(2);
+
 
     return (
       <div key={control.id} className="space-y-2">
