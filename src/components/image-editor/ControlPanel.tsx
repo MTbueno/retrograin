@@ -13,13 +13,13 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-// import { FiltersSection } from './FiltersSection'; // WebGL Presets not implemented
-import { SelectiveColorSection } from './SelectiveColorSection'; 
+import { FiltersSection } from './FiltersSection';
+import { SelectiveColorSection } from './SelectiveColorSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.20_perf_preview_fix_jiggle"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.20_perf_preview_fix_jiggle_temp_concat_fix"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -27,7 +27,8 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    setAppVersion(CURRENT_PROJECT_VERSION);
+    // This string will be updated by the AI when changes are made
+    setAppVersion("alpha 0.3_webgl.20_perf_preview_fix_jiggle_temp_concat_fix_v2"); 
   }, []);
 
   return (
@@ -47,11 +48,11 @@ export function ControlPanel() {
             <SidebarSeparator />
             <AdjustmentsSection />
             <SidebarSeparator />
-            <SelectiveColorSection /> 
+            <SelectiveColorSection />
             <SidebarSeparator />
             <TransformsSection />
-            {/* <SidebarSeparator />
-            <FiltersSection /> // WebGL Presets not implemented yet */}
+            <SidebarSeparator />
+            <FiltersSection />
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>
@@ -63,6 +64,5 @@ export function ControlPanel() {
     </Sidebar>
   );
 }
-
 
     
