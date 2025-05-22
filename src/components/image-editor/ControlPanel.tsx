@@ -19,7 +19,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.20_perf_preview_fix_jiggle_temp_concat_fix"; 
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.20_perf_preview_fix_jiggle_temp_concat_fix_v2"; 
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function ControlPanel() {
   useEffect(() => {
     setHasMounted(true);
     // This string will be updated by the AI when changes are made
-    setAppVersion("alpha 0.3_webgl.20_perf_preview_fix_jiggle_temp_concat_fix_v2"); 
+    setAppVersion("alpha 0.3_webgl.20_perf_preview_fix_jiggle_final_attempt"); 
   }, []);
 
   return (
