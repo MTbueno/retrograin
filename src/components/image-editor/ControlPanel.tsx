@@ -18,7 +18,7 @@ import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.16_transforms_rework";
+const CURRENT_PROJECT_VERSION = "alpha 0.3_webgl.17_pwa_cache_fix"; // Updated version
 
 export function ControlPanel() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
