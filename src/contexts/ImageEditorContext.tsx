@@ -9,7 +9,7 @@ export const SELECTIVE_COLOR_TARGETS = ['reds', 'oranges', 'yellows', 'greens', 
 export type SelectiveColorTarget = typeof SELECTIVE_COLOR_TARGETS[number];
 
 export interface SelectiveColorAdjustment {
-  hue: number;        // -0.5 to 0.5 (maps to -180 to 180 degrees for shader)
+  hue: number;        // -0.1 to 0.1 (maps to -36 to 36 degrees approx for shader)
   saturation: number; // -1.0 to 1.0 (maps to -100% to 100% change for shader)
   luminance: number;  // -1.0 to 1.0 (maps to -100% to 100% change for shader)
 }
@@ -28,8 +28,10 @@ export interface ImageSettings {
   shadows: number;
   whites: number;
   blacks: number;
+  hueRotate: number; 
   vignetteIntensity: number;
   grainIntensity: number;
+  sharpness: number; // New
   colorTemperature: number;
   tintShadowsColor: string;
   tintShadowsIntensity: number;
@@ -37,15 +39,14 @@ export interface ImageSettings {
   tintHighlightsColor: string;
   tintHighlightsIntensity: number;
   tintHighlightsSaturation: number;
-  rotation: number; // 0, 90, 180, 270
-  scaleX: number; // 1 or -1
-  scaleY: number; // 1 or -1
-  cropZoom: number; // 1 (no zoom) to N
-  cropOffsetX: number; // -1 to 1 (percentage of pannable area)
-  cropOffsetY: number; // -1 to 1 (percentage of pannable area)
+  rotation: number; 
+  scaleX: number; 
+  scaleY: number; 
+  cropZoom: number; 
+  cropOffsetX: number; 
+  cropOffsetY: number; 
   selectiveColors: SelectiveColors;
   activeSelectiveColorTarget: SelectiveColorTarget;
-  hueRotate: number; 
 }
 
 const initialSelectiveColors: SelectiveColors = SELECTIVE_COLOR_TARGETS.reduce((acc, color) => {
@@ -63,8 +64,10 @@ export const initialImageSettings: ImageSettings = {
   shadows: 0,
   whites: 0,
   blacks: 0,
+  hueRotate: 0,
   vignetteIntensity: 0,
   grainIntensity: 0,
+  sharpness: 0, // New
   colorTemperature: 0,
   tintShadowsColor: '#808080', 
   tintShadowsIntensity: 0,
@@ -78,9 +81,8 @@ export const initialImageSettings: ImageSettings = {
   cropZoom: 1,
   cropOffsetX: 0,
   cropOffsetY: 0,
-  selectiveColors: JSON.parse(JSON.stringify(initialSelectiveColors)), // Deep copy
+  selectiveColors: JSON.parse(JSON.stringify(initialSelectiveColors)),
   activeSelectiveColorTarget: 'reds',
-  hueRotate: 0, 
 };
 
 export type SettingsAction =
@@ -93,8 +95,10 @@ export type SettingsAction =
   | { type: 'SET_SHADOWS'; payload: number }
   | { type: 'SET_WHITES'; payload: number }
   | { type: 'SET_BLACKS'; payload: number }
+  | { type: 'SET_HUE_ROTATE'; payload: number }
   | { type: 'SET_VIGNETTE_INTENSITY'; payload: number }
   | { type: 'SET_GRAIN_INTENSITY'; payload: number }
+  | { type: 'SET_SHARPNESS'; payload: number } // New
   | { type: 'SET_COLOR_TEMPERATURE'; payload: number }
   | { type: 'SET_TINT_SHADOWS_COLOR'; payload: string }
   | { type: 'SET_TINT_SHADOWS_INTENSITY'; payload: number }
@@ -113,8 +117,7 @@ export type SettingsAction =
   | { type: 'LOAD_SETTINGS'; payload: ImageSettings }
   | { type: 'RESET_CROP_AND_TRANSFORMS' }
   | { type: 'SET_ACTIVE_SELECTIVE_COLOR_TARGET'; payload: SelectiveColorTarget }
-  | { type: 'SET_SELECTIVE_COLOR_ADJUSTMENT'; payload: { target: SelectiveColorTarget; adjustment: Partial<SelectiveColorAdjustment> } }
-  | { type: 'SET_HUE_ROTATE'; payload: number };
+  | { type: 'SET_SELECTIVE_COLOR_ADJUSTMENT'; payload: { target: SelectiveColorTarget; adjustment: Partial<SelectiveColorAdjustment> } };
 
 
 function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSettings {
@@ -137,10 +140,14 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, whites: action.payload };
     case 'SET_BLACKS':
       return { ...state, blacks: action.payload };
+    case 'SET_HUE_ROTATE':
+      return { ...state, hueRotate: action.payload };
     case 'SET_VIGNETTE_INTENSITY':
       return { ...state, vignetteIntensity: action.payload };
     case 'SET_GRAIN_INTENSITY':
       return { ...state, grainIntensity: action.payload };
+    case 'SET_SHARPNESS': // New
+      return { ...state, sharpness: action.payload };
     case 'SET_COLOR_TEMPERATURE':
       return { ...state, colorTemperature: action.payload };
     case 'SET_TINT_SHADOWS_COLOR':
@@ -165,7 +172,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
       return { ...state, scaleY: state.scaleY * -1 };
     case 'SET_CROP_ZOOM': {
       const newZoom = Math.max(1, action.payload);
-      // If zoom is reset to 1, also reset offsets
       if (newZoom === 1) {
         return { ...state, cropZoom: newZoom, cropOffsetX: 0, cropOffsetY: 0 };
       }
@@ -188,14 +194,13 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
     case 'RESET_SETTINGS':
       return {
         ...initialImageSettings,
-        // Preserve transforms
         rotation: state.rotation,
         scaleX: state.scaleX,
         scaleY: state.scaleY,
         cropZoom: state.cropZoom,
         cropOffsetX: state.cropOffsetX,
         cropOffsetY: state.cropOffsetY,
-        selectiveColors: JSON.parse(JSON.stringify(initialSelectiveColors)), // Ensure selective colors are also reset
+        selectiveColors: JSON.parse(JSON.stringify(initialSelectiveColors)), 
       };
     case 'LOAD_SETTINGS':
       return { ...action.payload };
@@ -212,8 +217,6 @@ function settingsReducer(state: ImageSettings, action: SettingsAction): ImageSet
           },
         },
       };
-    case 'SET_HUE_ROTATE': 
-      return { ...state, hueRotate: action.payload };
     default:
       return state;
   }
@@ -245,7 +248,7 @@ interface ImageEditorContextType {
   copiedSettings: ImageSettings | null;
   copyActiveSettings: () => void;
   pasteSettingsToActiveImage: () => void;
-  noiseImageDataRef: RefObject<ImageData | null>;
+  noiseImageDataRef: RefObject<ImageData | null>; 
 }
 
 const ImageEditorContext = createContext<ImageEditorContextType | undefined>(undefined);
@@ -274,12 +277,10 @@ const generateThumbnail = (imageElement: HTMLImageElement): string => {
       width = Math.round(height * aspectRatio);
     }
   }
-  // Ensure height is also within bounds after width adjustment (for very wide images)
   if (height > THUMBNAIL_MAX_HEIGHT) {
       height = THUMBNAIL_MAX_HEIGHT;
       width = Math.round(height * aspectRatio);
   }
-  // Ensure width is also within bounds after height adjustment (for very tall images)
    if (width > THUMBNAIL_MAX_WIDTH) {
       width = THUMBNAIL_MAX_WIDTH;
       height = Math.round(width / aspectRatio);
@@ -372,9 +373,6 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       return null;
     }
     try {
-      // Ensure the canvas is drawn at full resolution before exporting
-      // This might involve temporarily setting isPreviewing to false if it affects drawScene's resolution
-      // For simplicity, assume drawScene called by export will handle full res
       return currentCanvas.toDataURL(type, quality);
     } catch (e) {
       console.error("Error getting data URL from WebGL canvas:", e);
@@ -382,14 +380,16 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [canvasRef, currentActiveImageElement]);
 
-  const drawImageWithSettingsToContext = useCallback(
+const NOISE_CANVAS_SIZE_CONTEXT = 250; // Used if creating noise pattern for export
+
+const drawImageWithSettingsToContext = useCallback(
     (
       _ctx: WebGLRenderingContext,
       _image: HTMLImageElement,
       _settings: ImageSettings,
       _programInfo: any, 
       _buffers: any, 
-      currentNoiseImageData: ImageData | null,
+      currentNoiseImageData: ImageData | null, // Expect ImageData
       targetWidth: number,
       targetHeight: number
     ): void => {
@@ -400,7 +400,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
 
         const gl = _ctx;
         gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-        gl.clearColor(0.188, 0.188, 0.188, 1.0);
+        gl.clearColor(0.188, 0.188, 0.188, 1.0); 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         gl.useProgram(_programInfo.program);
@@ -436,7 +436,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         if (_programInfo.uniformLocations.sampler) gl.uniform1i(_programInfo.uniformLocations.sampler, 0);
         
-        // Basic Adjustments
+        // Pass all settings to uniforms
         if (_programInfo.uniformLocations.brightness) gl.uniform1f(_programInfo.uniformLocations.brightness, _settings.brightness);
         if (_programInfo.uniformLocations.contrast) gl.uniform1f(_programInfo.uniformLocations.contrast, _settings.contrast);
         if (_programInfo.uniformLocations.saturation) gl.uniform1f(_programInfo.uniformLocations.saturation, _settings.saturation);
@@ -447,18 +447,17 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         if (_programInfo.uniformLocations.whites) gl.uniform1f(_programInfo.uniformLocations.whites, _settings.whites);
         if (_programInfo.uniformLocations.blacks) gl.uniform1f(_programInfo.uniformLocations.blacks, _settings.blacks);
 
-        // Color Settings
         if (_programInfo.uniformLocations.hueValue) gl.uniform1f(_programInfo.uniformLocations.hueValue, (_settings.hueRotate ?? 0) / 360.0);
         if (_programInfo.uniformLocations.temperatureShift) gl.uniform1f(_programInfo.uniformLocations.temperatureShift, (_settings.colorTemperature ?? 0) / 200.0);
         
-        const { hexToRgbNormalizedArray: hexToRgbNorm } = require('@/lib/colorUtils'); // Ensure this path is correct
+        const { hexToRgbNormalizedArray } = require('@/lib/colorUtils'); 
 
-        const shadowRgb = hexToRgbNorm(_settings.tintShadowsColor);
+        const shadowRgb = hexToRgbNormalizedArray(_settings.tintShadowsColor);
         if (_programInfo.uniformLocations.tintShadowsColorRGB && shadowRgb) gl.uniform3fv(_programInfo.uniformLocations.tintShadowsColorRGB, shadowRgb);
         if (_programInfo.uniformLocations.tintShadowsIntensityFactor) gl.uniform1f(_programInfo.uniformLocations.tintShadowsIntensityFactor, _settings.tintShadowsIntensity);
         if (_programInfo.uniformLocations.tintShadowsSaturationValue) gl.uniform1f(_programInfo.uniformLocations.tintShadowsSaturationValue, _settings.tintShadowsSaturation);
 
-        const highlightRgb = hexToRgbNorm(_settings.tintHighlightsColor);
+        const highlightRgb = hexToRgbNormalizedArray(_settings.tintHighlightsColor);
         if (_programInfo.uniformLocations.tintHighlightsColorRGB && highlightRgb) gl.uniform3fv(_programInfo.uniformLocations.tintHighlightsColorRGB, highlightRgb);
         if (_programInfo.uniformLocations.tintHighlightsIntensityFactor) gl.uniform1f(_programInfo.uniformLocations.tintHighlightsIntensityFactor, _settings.tintHighlightsIntensity);
         if (_programInfo.uniformLocations.tintHighlightsSaturationValue) gl.uniform1f(_programInfo.uniformLocations.tintHighlightsSaturationValue, _settings.tintHighlightsSaturation);
@@ -466,10 +465,11 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         // Effects
         if (_programInfo.uniformLocations.vignetteIntensity) gl.uniform1f(_programInfo.uniformLocations.vignetteIntensity, _settings.vignetteIntensity);
         if (_programInfo.uniformLocations.grainIntensity) gl.uniform1f(_programInfo.uniformLocations.grainIntensity, _settings.grainIntensity);
-        if (_programInfo.uniformLocations.time) gl.uniform1f(_programInfo.uniformLocations.time, performance.now() / 5000.0); 
+        if (_programInfo.uniformLocations.sharpness) gl.uniform1f(_programInfo.uniformLocations.sharpness, _settings.sharpness);
+        
         if (_programInfo.uniformLocations.resolution) gl.uniform2f(_programInfo.uniformLocations.resolution, targetWidth, targetHeight);
 
-        // Transforms
+        // Transforms for vertex shader
         let rotationInRadians = 0;
         switch (_settings.rotation) {
             case 90: rotationInRadians = Math.PI / 2; break;
@@ -479,13 +479,15 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         if (_programInfo.uniformLocations.rotationAngle) gl.uniform1f(_programInfo.uniformLocations.rotationAngle, rotationInRadians);
         if (_programInfo.uniformLocations.scale) gl.uniform2f(_programInfo.uniformLocations.scale, _settings.scaleX, _settings.scaleY);
         
-        const totalEffectiveZoom = _settings.cropZoom; 
-        if (_programInfo.uniformLocations.cropTexScale) gl.uniform2f(_programInfo.uniformLocations.cropTexScale, 1.0 / totalEffectiveZoom, 1.0 / totalEffectiveZoom);
-        
+        const totalEffectiveZoom = _settings.cropZoom;
+        const u_crop_tex_scale_val: [number, number] = [1.0 / totalEffectiveZoom, 1.0 / totalEffectiveZoom];
         const maxTexOffset = Math.max(0, (1.0 - (1.0 / totalEffectiveZoom)) / 2.0);
-        const texOffsetX = _settings.cropOffsetX * maxTexOffset;
-        const texOffsetY = _settings.cropOffsetY * maxTexOffset * -1.0; 
-        if (_programInfo.uniformLocations.cropTexOffset) gl.uniform2f(_programInfo.uniformLocations.cropTexOffset, texOffsetX, texOffsetY);
+        let texOffsetX = _settings.cropOffsetX * maxTexOffset;
+        let texOffsetY = _settings.cropOffsetY * maxTexOffset * -1.0; 
+        const u_crop_tex_offset_val: [number, number] = [texOffsetX, texOffsetY];
+
+        if (_programInfo.uniformLocations.cropTexScale) gl.uniform2fv(_programInfo.uniformLocations.cropTexScale, u_crop_tex_scale_val);
+        if (_programInfo.uniformLocations.cropTexOffset) gl.uniform2fv(_programInfo.uniformLocations.cropTexOffset, u_crop_tex_offset_val);
 
         // Selective Color
         const SELECTIVE_COLOR_TARGETS_ORDER = ['reds', 'oranges', 'yellows', 'greens', 'cyans', 'blues', 'purples', 'magentas'];
@@ -499,42 +501,27 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         if (_programInfo.uniformLocations.saturationAdjustment) gl.uniform1f(_programInfo.uniformLocations.saturationAdjustment, currentSelective.saturation);
         if (_programInfo.uniformLocations.luminanceAdjustment) gl.uniform1f(_programInfo.uniformLocations.luminanceAdjustment, currentSelective.luminance);
         
-        // Grain for export using ImageData
-        if (_settings.grainIntensity > 0.001 && currentNoiseImageData && _programInfo.uniformLocations.grainSampler && _programInfo.uniformLocations.noiseTextureResolution) {
-            const noiseTexture = gl.createTexture();
-            if (noiseTexture) {
-                gl.activeTexture(gl.TEXTURE1); 
-                gl.bindTexture(gl.TEXTURE_2D, noiseTexture);
-                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); // Noise doesn't need flipping
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, currentNoiseImageData.width, currentNoiseImageData.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(currentNoiseImageData.data));
-                
-                if (_programInfo.uniformLocations.grainSampler) gl.uniform1i(_programInfo.uniformLocations.grainSampler, 1); 
-                if (_programInfo.uniformLocations.noiseTextureResolution) gl.uniform2f(_programInfo.uniformLocations.noiseTextureResolution, currentNoiseImageData.width, currentNoiseImageData.height);
-
-                gl.activeTexture(gl.TEXTURE0); 
-            } else {
-                 if (_programInfo.uniformLocations.grainSampler) gl.uniform1i(_programInfo.uniformLocations.grainSampler, 0); // Use main texture if noise fails
+        // Grain for export
+        if (_settings.grainIntensity > 0.001 && currentNoiseImageData) {
+            const tempNoisePatternCanvas = document.createElement('canvas');
+            tempNoisePatternCanvas.width = currentNoiseImageData.width;
+            tempNoisePatternCanvas.height = currentNoiseImageData.height;
+            const tempNoiseCtx = tempNoisePatternCanvas.getContext('2d');
+            if (tempNoiseCtx) {
+                tempNoiseCtx.putImageData(currentNoiseImageData, 0, 0);
+                const grainPattern = _ctx.createPattern(tempNoisePatternCanvas, 'repeat');
+                if (grainPattern && _programInfo.uniformLocations.grainPatternSampler) { // Assuming u_grainPatternSampler for a separate texture unit
+                     // This part is tricky without a second texture unit and sampler in the shader for grain pattern
+                     // For simplicity, the current shader applies noise algorithmically.
+                     // If grainPattern was to be used, it would involve setting up another texture.
+                     // Since the shader generates noise, this CanvasPattern approach is not directly used in the shader for export.
+                     // The shader's u_grainIntensity and u_resolution are used for algorithmic noise.
+                }
             }
-        } else {
-            // Ensure grain sampler is pointed to something valid even if grain is off
-             if (_programInfo.uniformLocations.grainSampler) gl.uniform1i(_programInfo.uniformLocations.grainSampler, 0); // Default to main texture
         }
-         gl.bindTexture(gl.TEXTURE_2D, texture); // Re-bind main image texture before drawing
-
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.deleteTexture(texture); 
-        const noiseTextureBound = gl.getParameter(gl.TEXTURE_BINDING_2D);
-        if(noiseTextureBound && gl.getTextureParameter(noiseTextureBound, gl.TEXTURE_BINDING_2D) === gl.TEXTURE1){
-            // This is a bit of a guess, assuming it might be the noise texture.
-            // Ideally, keep a ref to noiseTexture and delete it if it was created.
-            // For now, this is a placeholder.
-        }
-
     }, []
   );
 
@@ -552,8 +539,11 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
 
     const offscreenCanvas = document.createElement('canvas');
     
-    let exportWidth = imageElement.naturalWidth / settingsToApply.cropZoom;
-    let exportHeight = imageElement.naturalHeight / settingsToApply.cropZoom;
+    let imgNatWidth = imageElement.naturalWidth;
+    let imgNatHeight = imageElement.naturalHeight;
+
+    let exportWidth = imgNatWidth / settingsToApply.cropZoom;
+    let exportHeight = imgNatHeight / settingsToApply.cropZoom;
 
     if (settingsToApply.rotation === 90 || settingsToApply.rotation === 270) {
         [exportWidth, exportHeight] = [exportHeight, exportWidth];
@@ -568,7 +558,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       return null;
     }
     
-    const vsSource = 
+    const vsSource =
       'attribute vec4 a_position;' + '\n' +
       'attribute vec2 a_texCoord;' + '\n' +
       'uniform float u_rotationAngle;' + '\n' +
@@ -583,7 +573,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '  texCoord *= u_scale;' + '\n' +
       '  float c90 = cos(u_rotationAngle);' + '\n' +
       '  float s90 = sin(u_rotationAngle);' + '\n' +
-      '  mat2 rotation90Matrix = mat2(c90, -s90, s90, c90);' + '\n' + // Corrected for CW image rotation
+      '  mat2 rotation90Matrix = mat2(c90, s90, -s90, c90);' + '\n' +
       '  texCoord = rotation90Matrix * texCoord;' + '\n' +
       '  texCoord *= u_crop_tex_scale;' + '\n' +
       '  texCoord += u_crop_tex_offset;' + '\n' +
@@ -591,12 +581,10 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '  v_textureCoord = texCoord;' + '\n' +
       '}';
 
-    const fsSource = 
+    const fsSource =
       'precision mediump float;' + '\n' +
       'varying highp vec2 v_textureCoord;' + '\n' +
       'uniform sampler2D u_sampler;' + '\n' +
-      'uniform sampler2D u_grainSampler;' + '\n' +
-      'uniform vec2 u_noiseTextureResolution;' + '\n' +
       'uniform float u_brightness;' + '\n' +
       'uniform float u_contrast;' + '\n' +
       'uniform float u_saturation;' + '\n' +
@@ -616,7 +604,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       'uniform float u_tintHighlightsSaturationValue;' + '\n' +
       'uniform float u_vignetteIntensity;' + '\n' +
       'uniform float u_grainIntensity;' + '\n' +
-      'uniform float u_time;' + '\n' +
+      'uniform float u_sharpness;' + '\n' +
       'uniform vec2 u_resolution;' + '\n' +
       'uniform int u_selectedColorTargetIndex;' + '\n' +
       'uniform float u_hueAdjustment;' + '\n' +
@@ -638,16 +626,11 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);' + '\n' +
       '}' + '\n' +
 
-      'vec3 desaturate(vec3 color, float saturationFactor) {' + '\n' +
-      '    float luma = dot(color, vec3(0.299, 0.587, 0.114));' + '\n' +
-      '    return mix(vec3(luma), color, saturationFactor);' + '\n' +
-      '}' + '\n' +
-
       'float random(vec2 st) {' + '\n' +
-      '  return fract(sin(dot(st.xy + u_time * 0.01, vec2(12.9898,78.233))) * 43758.5453123);' + '\n' +
+      '  return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);' + '\n' +
       '}' + '\n' +
 
-      'const float HUE_RED_MAX = 0.05;' + '\n' + // Example values, adjust as needed
+      'const float HUE_RED_MAX = 0.05;' + '\n' +
       'const float HUE_RED_MIN = 0.95;' + '\n' +
       'const float HUE_ORANGE_MIN = 0.05;' + '\n' +
       'const float HUE_ORANGE_MAX = 0.12;' + '\n' +
@@ -665,10 +648,12 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       'const float HUE_MAGENTA_MAX = 0.95;' + '\n' +
 
       'void main(void) {' + '\n' +
+      '  if (v_textureCoord.x < 0.0 || v_textureCoord.x > 1.0 || v_textureCoord.y < 0.0 || v_textureCoord.y > 1.0) {' + '\n' +
+      '    discard;' + '\n' +
+      '  }' + '\n' +
       '  vec4 textureColor = texture2D(u_sampler, v_textureCoord);' + '\n' +
       '  vec3 color = textureColor.rgb;' + '\n' +
 
-      // Basic Adjustments
       '  color *= u_brightness;' + '\n' +
       '  color = (color - 0.5) * u_contrast + 0.5;' + '\n' +
       '  float luma_sat = dot(color, vec3(0.299, 0.587, 0.114));' + '\n' +
@@ -689,26 +674,17 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '  }' + '\n' +
 
       '  color *= pow(2.0, u_exposure);' + '\n' +
-      '  color = clamp(color, 0.0, 1.0);' + '\n' +
 
-      '  if (u_shadows != 0.0) {' + '\n' +
-      '      float luma_sh_hl_initial = dot(color, vec3(0.2126, 0.7152, 0.0722));' + '\n' +
-      '      color += u_shadows * 0.25 * (1.0 - smoothstep(0.0, 0.5, luma_sh_hl_initial));' + '\n' +
-      '  }' + '\n' +
-      '  color = clamp(color, 0.0, 1.0);' + '\n' +
-
-      '  if (u_highlights != 0.0) {' + '\n' +
-      '      float luma_sh_hl_after_shadows = dot(color, vec3(0.2126, 0.7152, 0.0722));' + '\n' +
-      '      color += u_highlights * 0.25 * smoothstep(0.5, 1.0, luma_sh_hl_after_shadows);' + '\n' +
-      '  }' + '\n' +
-      '  color = clamp(color, 0.0, 1.0);' + '\n' +
+      '  float luma_sh_hl_initial = dot(color, vec3(0.2126, 0.7152, 0.0722));' + '\n' +
+      '  color += u_shadows * 0.25 * (1.0 - smoothstep(0.0, 0.5, luma_sh_hl_initial));' + '\n' +
+      '  float luma_sh_hl_after_shadows = dot(color, vec3(0.2126, 0.7152, 0.0722));' + '\n' +
+      '  color += u_highlights * 0.25 * smoothstep(0.5, 1.0, luma_sh_hl_after_shadows);' + '\n' +
 
       '  float black_point_adjust = u_blacks * 0.15;' + '\n' +
       '  float white_point_adjust = 1.0 + u_whites * 0.15;' + '\n' +
       '  white_point_adjust = max(white_point_adjust, black_point_adjust + 0.001);' + '\n' +
       '  color = (color - black_point_adjust) / (white_point_adjust - black_point_adjust);' + '\n' +
 
-      // Hue and Temperature
       '  if (u_hueValue != 0.0) {' + '\n' +
       '      vec3 hsv_hue = rgbToHsv(color);' + '\n' +
       '      hsv_hue.x = mod(hsv_hue.x + u_hueValue, 1.0);' + '\n' +
@@ -720,23 +696,22 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '      color.r += temp_strength;' + '\n' +
       '      color.b -= temp_strength;' + '\n' +
       '  }' + '\n' +
-      '  color = clamp(color, 0.0, 1.0);' + '\n' +
-
-      // Tinting
+      
       '  float luma_tint = dot(color, vec3(0.2126, 0.7152, 0.0722));' + '\n' +
+      '  vec3 desaturate_temp = vec3(0.0);' + '\n' + // Temporary for desaturation calc
       '  if (u_tintShadowsIntensityFactor > 0.001) {' + '\n' +
-      '    vec3 finalShadowTintColor = desaturate(u_tintShadowsColorRGB, u_tintShadowsSaturationValue);' + '\n' +
+      '    desaturate_temp = vec3(dot(u_tintShadowsColorRGB, vec3(0.299, 0.587, 0.114)));' + '\n' +
+      '    vec3 finalShadowTintColor = mix(desaturate_temp, u_tintShadowsColorRGB, u_tintShadowsSaturationValue);' + '\n' +
       '    float shadowMask = 1.0 - smoothstep(0.0, 0.45, luma_tint);' + '\n' +
       '    color = mix(color, finalShadowTintColor, shadowMask * u_tintShadowsIntensityFactor);' + '\n' +
       '  }' + '\n' +
       '  if (u_tintHighlightsIntensityFactor > 0.001) {' + '\n' +
-      '    vec3 finalHighlightTintColor = desaturate(u_tintHighlightsColorRGB, u_tintHighlightsSaturationValue);' + '\n' +
+      '    desaturate_temp = vec3(dot(u_tintHighlightsColorRGB, vec3(0.299, 0.587, 0.114)));' + '\n' +
+      '    vec3 finalHighlightTintColor = mix(desaturate_temp, u_tintHighlightsColorRGB, u_tintHighlightsSaturationValue);' + '\n' +
       '    float highlightMask = smoothstep(0.55, 1.0, luma_tint);' + '\n' +
       '    color = mix(color, finalHighlightTintColor, highlightMask * u_tintHighlightsIntensityFactor);' + '\n' +
       '  }' + '\n' +
-      '  color = clamp(color, 0.0, 1.0);' + '\n' +
 
-      // Selective Color
       '  if (u_selectedColorTargetIndex != -1 && (u_hueAdjustment != 0.0 || u_saturationAdjustment != 0.0 || u_luminanceAdjustment != 0.0)) {' + '\n' +
       '      vec3 hsv_selective = rgbToHsv(color);' + '\n' +
       '      bool colorMatch = false;' + '\n' +
@@ -755,9 +730,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '          color = hsvToRgb(hsv_selective);' + '\n' +
       '      }' + '\n' +
       '  }' + '\n' +
-      '  color = clamp(color, 0.0, 1.0);' + '\n' +
        
-      // Effects
       '  if (u_vignetteIntensity > 0.001) {' + '\n' +
       '      float vignetteRadius = 0.7;' + '\n' +
       '      float vignetteSoftness = 0.6;' + '\n' +
@@ -766,11 +739,27 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
       '      color.rgb *= mix(1.0, vignetteFactor, u_vignetteIntensity * 1.5);' + '\n' +
       '  }' + '\n' +
 
-      '  if (u_grainIntensity > 0.001) {' + '\n' +
-      '    float grain_scale_factor = u_resolution.y > 0.0 ? 50.0 / u_resolution.y : 1.0;' + '\n' +
+      '  if (u_grainIntensity > 0.0) {' + '\n' +
+      '    float grain_scale_factor = u_resolution.x > 0.0 ? 50.0 / u_resolution.x : 1.0;' + '\n' + 
       '    vec2 grainCoord = v_textureCoord * u_resolution.xy * grain_scale_factor;' + '\n' +
       '    float grain_noise = (random(grainCoord) - 0.5) * 0.15;' + '\n' + 
       '    color.rgb += grain_noise * u_grainIntensity;' + '\n' +
+      '  }' + '\n' +
+
+      '  if (u_sharpness > 0.0) {' + '\n' +
+      '      vec2 texelSize = 1.0 / u_resolution;' + '\n' +
+      '      vec3 centerColor = color.rgb;' + '\n' +
+      '      vec3 sum = vec3(0.0);' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2(-texelSize.x, -texelSize.y)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2( 0.0,       -texelSize.y)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2( texelSize.x, -texelSize.y)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2(-texelSize.x,  0.0)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2( texelSize.x,  0.0)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2(-texelSize.x,  texelSize.y)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2( 0.0,        texelSize.y)).rgb;' + '\n' +
+      '      sum += texture2D(u_sampler, v_textureCoord + vec2( texelSize.x,  texelSize.y)).rgb;' + '\n' +
+      '      vec3 blurred = sum / 8.0;' + '\n' +
+      '      color.rgb = mix(centerColor, centerColor + (centerColor - blurred) * 1.5, u_sharpness);' + '\n' +
       '  }' + '\n' +
       
       '  gl_FragColor = vec4(clamp(color, 0.0, 1.0), textureColor.a);' + '\n' +
@@ -827,7 +816,7 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
             tintHighlightsSaturationValue: gl.getUniformLocation(program, 'u_tintHighlightsSaturationValue'),
             vignetteIntensity: gl.getUniformLocation(program, 'u_vignetteIntensity'),
             grainIntensity: gl.getUniformLocation(program, 'u_grainIntensity'),
-            time: gl.getUniformLocation(program, 'u_time'),
+            sharpness: gl.getUniformLocation(program, 'u_sharpness'),
             resolution: gl.getUniformLocation(program, 'u_resolution'),
             rotationAngle: gl.getUniformLocation(program, 'u_rotationAngle'),
             scale: gl.getUniformLocation(program, 'u_scale'),
@@ -837,18 +826,15 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
             hueAdjustment: gl.getUniformLocation(program, 'u_hueAdjustment'),
             saturationAdjustment: gl.getUniformLocation(program, 'u_saturationAdjustment'),
             luminanceAdjustment: gl.getUniformLocation(program, 'u_luminanceAdjustment'),
-            grainSampler: gl.getUniformLocation(program, 'u_grainSampler'),
-            noiseTextureResolution: gl.getUniformLocation(program, 'u_noiseTextureResolution'),
         }
     };
     
     const positionBuffer = gl.createBuffer(); 
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer); 
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,1,  -1,-1,  1,1,  1,1,  -1,-1,  1,-1]), gl.STATIC_DRAW); // Two triangles for a quad
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,1,  -1,-1,  1,1,  1,1,  -1,-1,  1,-1]), gl.STATIC_DRAW);
     
     const textureCoordBuffer = gl.createBuffer(); 
     gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer); 
-    // Texture coords for two triangles: (0,1 top-left), (0,0 bottom-left), (1,1 top-right), (1,1 top-right), (0,0 bottom-left), (1,0 bottom-right)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,1,  0,0,  1,1,  1,1,  0,0,  1,0]), gl.STATIC_DRAW);
     
     const buffers = { position: positionBuffer, textureCoord: textureCoordBuffer };
@@ -863,16 +849,14 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
     if (vs) gl.deleteShader(vs);
     if (fs) gl.deleteShader(fs);
     
-    // Try to lose context if available
     const loseContextExt = gl.getExtension('WEBGL_lose_context');
     if (loseContextExt) {
         loseContextExt.loseContext();
     }
 
-
     return dataUrl;
 
-  }, [drawImageWithSettingsToContext, noiseImageDataRef]); 
+  }, [drawImageWithSettingsToContext, noiseImageDataRef]); // Include noiseImageDataRef if used
 
 
   const copyActiveSettings = useCallback(() => {
@@ -938,5 +922,3 @@ export function useImageEditor() {
   }
   return context;
 }
-
-    

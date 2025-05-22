@@ -4,7 +4,7 @@
 import { useImageEditor } from '@/contexts/ImageEditorContext';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Brush } from 'lucide-react';
+import { Sun, Contrast, Droplets, Aperture, Palette, CircleDot, Film, Thermometer, Paintbrush, Sparkles, Moon, Baseline, Brush, Maximize2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ColorSpectrumSlider } from '@/components/ui/color-spectrum-slider';
 import { hexToRgb, desaturateRgb, rgbToHex } from '@/lib/colorUtils';
@@ -16,7 +16,7 @@ export function AdjustmentsSection() {
     type: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'exposure' | 
           'highlights' | 'shadows' | 'whites' | 'blacks' | 
           'hueRotate' | 
-          'vignetteIntensity' | 'grainIntensity' | 
+          'vignetteIntensity' | 'grainIntensity' | 'sharpness' |
           'colorTemperature' | 
           'tintShadowsIntensity' | 'tintShadowsSaturation' |
           'tintHighlightsIntensity' | 'tintHighlightsSaturation',
@@ -61,6 +61,9 @@ export function AdjustmentsSection() {
       case 'grainIntensity':
         dispatchSettings({ type: 'SET_GRAIN_INTENSITY', payload: value });
         break;
+      case 'sharpness':
+        dispatchSettings({ type: 'SET_SHARPNESS', payload: value });
+        break;
       case 'colorTemperature':
         dispatchSettings({ type: 'SET_COLOR_TEMPERATURE', payload: value });
         break;
@@ -95,13 +98,12 @@ export function AdjustmentsSection() {
     } else if (tonalRange === 'highlights') {
       dispatchSettings({ type: 'SET_TINT_HIGHLIGHTS_COLOR', payload: color });
     }
-    // setIsPreviewing(false) is handled by onValueCommit on the intensity/saturation sliders
   };
 
   const basicAdjustmentControls = [
     { id: 'brightness', label: 'Brightness', icon: Sun, value: settings.brightness, min: 0.75, max: 1.25, step: 0.01 },
-    { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.5, max: 1.5, step: 0.01 },
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 2, step: 0.01 },
+    { id: 'contrast', label: 'Contrast', icon: Contrast, value: settings.contrast, min: 0.75, max: 1.25, step: 0.01 },
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: settings.saturation, min: 0, max: 1.5, step: 0.01 },
     { id: 'vibrance', label: 'Vibrance', icon: Brush, value: settings.vibrance, min: -1, max: 1, step: 0.01 },
     { id: 'exposure', label: 'Exposure', icon: Aperture, value: settings.exposure, min: -0.5, max: 0.5, step: 0.01 },
     { id: 'highlights', label: 'Highlights', icon: Sparkles, value: settings.highlights, min: -1, max: 1, step: 0.01 },
@@ -116,8 +118,9 @@ export function AdjustmentsSection() {
   ];
 
   const effectSettingControls = [
-    { id: 'vignetteIntensity', label: 'Vignette', icon: CircleDot, value: settings.vignetteIntensity, min: 0, max: 1, step: 0.01 }, // TODO: Implement WebGL
-    { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 }, // TODO: Implement WebGL
+    { id: 'vignetteIntensity', label: 'Vignette', icon: CircleDot, value: settings.vignetteIntensity, min: 0, max: 1, step: 0.01 },
+    { id: 'grainIntensity', label: 'Grain', icon: Film, value: settings.grainIntensity, min: 0, max: 1, step: 0.01 },
+    { id: 'sharpness', label: 'Sharpness', icon: Maximize2, value: settings.sharpness, min: 0, max: 1, step: 0.01 },
   ];
   
   const renderSlider = (control: any, isIntensitySlider: boolean = false, isSaturationSlider: boolean = false) => (
@@ -128,10 +131,10 @@ export function AdjustmentsSection() {
           {control.label}
         </Label>
         <span className="text-xs text-muted-foreground">
-          {control.id === 'exposure' || control.id === 'brightness' ? (control.value ?? (control.id === 'brightness' ? 1 : 0)).toFixed(2) :
+          {control.id === 'exposure' || control.id === 'brightness' || control.id === 'contrast' ? (control.value ?? (control.id === 'brightness' || control.id === 'contrast' ? 1 : 0)).toFixed(2) :
            control.id === 'hueRotate' ? `${Math.round(control.value ?? 0)}°` : 
            ['highlights', 'shadows', 'whites', 'blacks', 'vibrance'].includes(control.id) ? `${Math.round((control.value ?? 0) * 100)}` :
-           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || ['saturation', 'vignetteIntensity', 'grainIntensity'].includes(control.id) ? `${Math.round((control.value ?? 0) * 100)}%` :
+           isIntensitySlider || control.id.includes('Intensity') || isSaturationSlider || ['saturation', 'vignetteIntensity', 'grainIntensity', 'sharpness'].includes(control.id) ? `${Math.round((control.value ?? 0) * 100)}%` :
            control.id === 'colorTemperature' ? `${Math.round(control.value ?? 0)}` :
            `${Math.round((control.value ?? 0) * 100)}%`} 
         </span>
@@ -183,10 +186,10 @@ export function AdjustmentsSection() {
         label: `${label} Tint`,
         icon: Paintbrush, 
         value: intensityValue,
-        min: 0, max: 0.5, step: 0.01 
+        min: 0, max: 0.25, step: 0.01 // Max intensity changed to 0.25
       }, true)}
 
-      {(intensityValue ?? 0) > 0 && ( // Check if intensityValue is defined and > 0
+      {(intensityValue ?? 0) > 0 && ( 
         <div className="space-y-1.5 pl-6"> 
           <div className="flex items-center space-x-2">
             <Label htmlFor={colorControlId} className="text-xs text-muted-foreground shrink-0">

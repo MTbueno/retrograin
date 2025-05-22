@@ -13,7 +13,7 @@ import {
 import { FileUploadSection } from './FileUploadSection';
 import { AdjustmentsSection } from './AdjustmentsSection';
 import { TransformsSection } from './TransformsSection';
-import { FiltersSection } from './FiltersSection';
+// import { FiltersSection } from './FiltersSection'; // Removed
 import { SelectiveColorSection } from './SelectiveColorSection';
 import { ActionButtonsSection } from './ActionButtonsSection';
 import { AuthSection } from './AuthSection';
@@ -25,7 +25,7 @@ export function ControlPanel() {
 
   useEffect(() => {
     setHasMounted(true);
-    setAppVersion("alpha 0.3_webgl.21_static_grain"); 
+    setAppVersion("alpha 0.3_webgl.21_final_adjustments"); 
   }, []);
 
   return (
@@ -48,10 +48,9 @@ export function ControlPanel() {
             <SelectiveColorSection />
             <SidebarSeparator />
             <TransformsSection />
-            <SidebarSeparator />
-            <FiltersSection />
+            {/* <SidebarSeparator /> */}
+            {/* <FiltersSection /> // Removed */}
             <SidebarSeparator /> 
-            {/* Removed EffectSettingsSection as its content (Vignette, Grain) is now in AdjustmentsSection's WebGL shader */}
           </SidebarMenu>
         </ScrollArea>
       </SidebarContent>

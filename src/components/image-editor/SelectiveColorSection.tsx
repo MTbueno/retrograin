@@ -44,9 +44,9 @@ export function SelectiveColorSection() {
   };
 
   const adjustmentControls = [
-    { id: 'hue', label: 'Hue', icon: Palette, value: currentAdjustments.hue, min: -0.5, max: 0.5, step: 0.01 }, // Maps to -180 to 180 degrees
-    { id: 'saturation', label: 'Saturation', icon: Droplets, value: currentAdjustments.saturation, min: -1, max: 1, step: 0.01 }, // Maps to -100% to 100%
-    { id: 'luminance', label: 'Luminance', icon: Sun, value: currentAdjustments.luminance, min: -1, max: 1, step: 0.01 }, // Maps to -100% to 100%
+    { id: 'hue', label: 'Hue', icon: Palette, value: currentAdjustments.hue, min: -0.1, max: 0.1, step: 0.005 }, // Range -0.1 to 0.1 (maps to -36 to +36 degrees approx for shader)
+    { id: 'saturation', label: 'Saturation', icon: Droplets, value: currentAdjustments.saturation, min: -1, max: 1, step: 0.01 }, // Maps to -100% to 100% change for shader
+    { id: 'luminance', label: 'Luminance', icon: Sun, value: currentAdjustments.luminance, min: -1, max: 1, step: 0.01 }, // Maps to -100% to 100% change for shader
   ];
 
   return (
@@ -81,7 +81,7 @@ export function SelectiveColorSection() {
             </Label>
             <span className="text-xs text-muted-foreground">
               {control.id === 'hue' 
-                ? `${Math.round((control.value ?? 0) * 360)}°` 
+                ? `${Math.round((control.value ?? 0) * 360)}°` // Displaying degrees, actual shader value is 0-1
                 : `${Math.round((control.value ?? 0) * 100)}%`}
             </span>
           </div>
